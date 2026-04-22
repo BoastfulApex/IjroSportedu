@@ -1,3 +1,4 @@
+from django.db import models
 from rest_framework.permissions import BasePermission
 from .models import UserRoleAssignment
 
@@ -26,15 +27,20 @@ class IsInstituteLeader(BasePermission):
 
 
 class CanViewAllReports(BasePermission):
-    """TASK_CONTROLLER yoki INSTITUTE_LEADER"""
+    """TASK_CONTROLLER, INSTITUTE_LEADER, BRANCH_LEADER yoki SUPER_ADMIN"""
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        return request.user.is_task_controller() or request.user.is_institute_leader() or request.user.is_super_admin()
+        return (
+            request.user.is_super_admin()
+            or request.user.is_task_controller()
+            or request.user.is_institute_leader()
+            or request.user.is_branch_leader()
+        )
 
 
 class CanCreateTask(BasePermission):
-    """Faqat TASK_CONTROL bo'lim xodimlari yoki can_create_tasks=True bo'limi xodimlari"""
+    """TASK_CONTROL bo'lim xodimlari, can_create_tasks=True bo'limi xodimlari"""
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
@@ -43,7 +49,9 @@ class CanCreateTask(BasePermission):
         return UserRoleAssignment.objects.filter(
             user=request.user,
             is_active=True,
-            department__can_create_tasks=True,
+        ).filter(
+            models.Q(department__can_create_tasks=True)
+            | models.Q(department__dept_type="TASK_CONTROL")
         ).exists()
 
 

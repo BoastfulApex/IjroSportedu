@@ -1,16 +1,23 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Task, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
+from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
 from apps.accounts.serializers import UserListSerializer
 
 
 class TaskAssigneeSerializer(serializers.ModelSerializer):
-    user_email = serializers.EmailField(source="user.email", read_only=True)
-    user_full_name = serializers.CharField(source="user.full_name", read_only=True)
+    user_email         = serializers.EmailField(source="user.email",      read_only=True)
+    user_full_name     = serializers.CharField(source="user.full_name",   read_only=True)
+    organization_name  = serializers.CharField(source="organization.name",read_only=True)
+    department_name    = serializers.CharField(source="department.name",  read_only=True)
 
     class Meta:
         model = TaskAssignee
-        fields = ["id", "user", "user_email", "user_full_name", "assigned_at"]
+        fields = [
+            "id", "user", "user_email", "user_full_name",
+            "organization", "organization_name",
+            "department", "department_name",
+            "is_primary", "is_leader", "assigned_at",
+        ]
         read_only_fields = ["assigned_at"]
 
 
@@ -57,6 +64,23 @@ class TaskHistorySerializer(serializers.ModelSerializer):
         ]
 
 
+class TaskOrganizationTargetSerializer(serializers.ModelSerializer):
+    organization_name = serializers.CharField(source="organization.name", read_only=True)
+    organization_short = serializers.CharField(source="organization.short_name", read_only=True)
+    department_name = serializers.CharField(source="department.name", read_only=True)
+
+    class Meta:
+        model = TaskOrganizationTarget
+        fields = ["id", "organization", "organization_name", "organization_short",
+                  "department", "department_name"]
+
+
+# ── Topshiriq yaratishda manzil inputi ──────────────────────────
+class OrgTargetInputSerializer(serializers.Serializer):
+    organization = serializers.IntegerField()
+    department   = serializers.IntegerField(required=False, allow_null=True, default=None)
+
+
 class TaskListSerializer(serializers.ModelSerializer):
     creator_name = serializers.CharField(source="creator.full_name", read_only=True)
     target_organization_name = serializers.CharField(
@@ -69,6 +93,7 @@ class TaskListSerializer(serializers.ModelSerializer):
         source="creating_department.name", read_only=True
     )
     assignees_count = serializers.SerializerMethodField()
+    assignees = TaskAssigneeSerializer(many=True, read_only=True)
     priority_display = serializers.CharField(source="get_priority_display", read_only=True)
     status_display = serializers.CharField(source="get_status_display", read_only=True)
 
@@ -79,7 +104,8 @@ class TaskListSerializer(serializers.ModelSerializer):
             "creator", "creator_name", "creating_department", "creating_department_name",
             "target_organization", "target_organization_name",
             "target_department", "target_department_name",
-            "deadline", "is_overdue", "created_at", "updated_at", "assignees_count",
+            "deadline", "is_overdue", "created_at", "updated_at",
+            "assignees_count", "assignees",
         ]
 
     def get_assignees_count(self, obj):
@@ -89,6 +115,7 @@ class TaskListSerializer(serializers.ModelSerializer):
 class TaskDetailSerializer(serializers.ModelSerializer):
     assignees = TaskAssigneeSerializer(many=True, read_only=True)
     attachments = TaskAttachmentSerializer(many=True, read_only=True)
+    org_targets = TaskOrganizationTargetSerializer(many=True, read_only=True)
     comments_count = serializers.SerializerMethodField()
     creator_name = serializers.CharField(source="creator.full_name", read_only=True)
     target_organization_name = serializers.CharField(
@@ -113,7 +140,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             "target_organization", "target_organization_name",
             "target_department", "target_department_name",
             "deadline", "is_overdue", "created_at", "updated_at",
-            "assignees", "attachments", "comments_count",
+            "assignees", "attachments", "org_targets", "comments_count",
         ]
 
     def get_comments_count(self, obj):
@@ -133,15 +160,38 @@ class TaskDetailSerializer(serializers.ModelSerializer):
 
 
 class TaskCreateSerializer(serializers.ModelSerializer):
+    targets = OrgTargetInputSerializer(many=True, write_only=True)
+    deadline = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        input_formats=[
+            "%Y-%m-%dT%H:%M",
+            "%Y-%m-%dT%H:%M:%S",
+            "iso-8601",
+        ],
+    )
+
     class Meta:
         model = Task
         fields = [
+            "id",
             "title", "description", "priority",
-            "target_organization", "target_department", "deadline",
+            "targets",   # ← bir nechta tashkilot manzillari
+            "deadline",
         ]
+        read_only_fields = ["id"]
+
+    def validate_targets(self, value):
+        if not value:
+            raise serializers.ValidationError("Kamida bitta tashkilot tanlang")
+        return value
 
     def validate_deadline(self, value):
-        if value and value < timezone.now():
+        if value is None:
+            return value
+        if timezone.is_naive(value):
+            value = timezone.make_aware(value)
+        if value < timezone.now():
             raise serializers.ValidationError("Muddat o'tgan vaqtga belgilanishi mumkin emas")
         return value
 

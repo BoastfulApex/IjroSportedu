@@ -10,24 +10,35 @@ from apps.organizations.models import Organization
 from apps.accounts.permissions import CanViewAllReports
 
 
+def get_task_qs_for_user(user):
+    """Foydalanuvchi ko'ra oladigan tasklarni qaytaradi."""
+    org_ids = user.get_report_org_ids()
+    if org_ids is None:
+        return Task.objects.all()
+    if not org_ids:
+        return Task.objects.none()
+    return Task.objects.filter(target_organization__in=org_ids)
+
+
 class OverviewReportView(APIView):
     permission_classes = [IsAuthenticated, CanViewAllReports]
 
     def get(self, request):
-        cache_key = "report_overview"
-        cached = cache.get(cache_key)
-        if cached:
-            return Response(cached)
+        user = request.user
+        org_ids = user.get_report_org_ids()
 
+        # Super admin / task controller / institute leader uchun cache
+        if org_ids is None:
+            cached = cache.get("report_overview")
+            if cached:
+                return Response(cached)
+
+        qs = get_task_qs_for_user(user)
         now = timezone.now()
-        total = Task.objects.count()
-        by_status = dict(
-            Task.objects.values_list("status").annotate(count=Count("id"))
-        )
-        by_priority = dict(
-            Task.objects.values_list("priority").annotate(count=Count("id"))
-        )
-        overdue = Task.objects.filter(
+
+        by_status = dict(qs.values_list("status").annotate(count=Count("id")))
+        by_priority = dict(qs.values_list("priority").annotate(count=Count("id")))
+        overdue = qs.filter(
             deadline__lt=now,
             status__in=[
                 Task.Status.CREATED, Task.Status.ASSIGNED,
@@ -37,16 +48,18 @@ class OverviewReportView(APIView):
         ).count()
 
         data = {
-            "total": total,
+            "total": qs.count(),
             "by_status": by_status,
             "by_priority": by_priority,
             "overdue": overdue,
-            "closed_today": Task.objects.filter(
+            "closed_today": qs.filter(
                 status=Task.Status.CLOSED,
                 updated_at__date=now.date(),
             ).count(),
         }
-        cache.set(cache_key, data, timeout=300)
+
+        if org_ids is None:
+            cache.set("report_overview", data, timeout=300)
         return Response(data)
 
 
@@ -54,10 +67,16 @@ class ByOrganizationReportView(APIView):
     permission_classes = [IsAuthenticated, CanViewAllReports]
 
     def get(self, request):
-        orgs = Organization.objects.filter(is_active=True).prefetch_related("received_tasks")
+        user = request.user
+        org_ids = user.get_report_org_ids()
+
+        orgs = Organization.objects.filter(is_active=True)
+        if org_ids is not None:
+            orgs = orgs.filter(id__in=org_ids)
+
         data = []
-        for org in orgs:
-            tasks = org.received_tasks
+        for org in orgs.prefetch_related("received_tasks"):
+            tasks = org.received_tasks.all()
             data.append({
                 "organization_id": org.id,
                 "organization_name": org.name,
@@ -73,7 +92,10 @@ class ByDepartmentReportView(APIView):
     permission_classes = [IsAuthenticated, CanViewAllReports]
 
     def get(self, request):
+        user = request.user
+        org_ids = user.get_report_org_ids()
         org_id = request.query_params.get("organization")
+
         qs = Task.objects.values(
             "target_department__id",
             "target_department__name",
@@ -82,8 +104,12 @@ class ByDepartmentReportView(APIView):
             total=Count("id"),
             overdue=Count("id", filter=Q(is_overdue=True)),
         )
+
         if org_id:
             qs = qs.filter(target_organization_id=org_id)
+        elif org_ids is not None:
+            qs = qs.filter(target_organization__in=org_ids)
+
         return Response(list(qs))
 
 
@@ -92,7 +118,7 @@ class OverdueTasksView(APIView):
 
     def get(self, request):
         now = timezone.now()
-        tasks = Task.objects.filter(
+        tasks = get_task_qs_for_user(request.user).filter(
             deadline__lt=now,
             status__in=[
                 Task.Status.CREATED, Task.Status.ASSIGNED,

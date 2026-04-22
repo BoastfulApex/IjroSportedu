@@ -8,7 +8,7 @@ from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
-from .models import Task, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
+from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
 from .serializers import (
     TaskListSerializer, TaskDetailSerializer, TaskCreateSerializer,
     TaskStatusUpdateSerializer, TaskAssigneeSerializer,
@@ -32,25 +32,35 @@ class TaskViewSet(viewsets.ModelViewSet):
         qs = Task.objects.select_related(
             "creator", "creating_department__organization",
             "target_organization", "target_department",
-        ).prefetch_related("assignees__user")
+        ).prefetch_related("assignees__user", "org_targets__organization", "org_targets__department")
+
+        # ?my_tasks=true — faqat o'zi ijrochi sifatida biriktirilgan topshiriqlar
+        if self.request.query_params.get("my_tasks") == "true":
+            return qs.filter(assignees__user=user).distinct()
 
         if user.is_super_admin() or user.is_task_controller():
             return qs
 
-        # Institute leader can see all tasks
         if user.is_institute_leader():
             return qs
 
-        # Others see tasks for their org or assigned to them
+        active_roles = user.role_assignments.filter(is_active=True)
         user_org_ids = list(
-            user.role_assignments.filter(is_active=True)
-            .exclude(organization=None)
+            active_roles.exclude(organization=None)
             .values_list("organization_id", flat=True)
+        )
+        user_dept_ids = list(
+            active_roles.exclude(department=None)
+            .values_list("department_id", flat=True)
         )
         return qs.filter(
             Q(assignees__user=user)
             | Q(creator=user)
             | Q(target_organization__in=user_org_ids)
+            | Q(target_department__in=user_dept_ids)
+            # Ko'p manzilli topshiriqlar: org_targets orqali ham ko'ra oladi
+            | Q(org_targets__organization__in=user_org_ids)
+            | Q(org_targets__department__in=user_dept_ids)
         ).distinct()
 
     def get_serializer_class(self):
@@ -61,25 +71,47 @@ class TaskViewSet(viewsets.ModelViewSet):
         return TaskDetailSerializer
 
     def perform_create(self, serializer):
+        from apps.accounts.models import UserRoleAssignment
+        from apps.organizations.models import Organization, Department
+        from django.db.models import Q as DQ
         user = self.request.user
-        if not (user.is_super_admin() or user.is_task_controller()):
-            from apps.accounts.models import UserRoleAssignment
+
+        if user.is_super_admin() or user.is_task_controller():
             assignment = UserRoleAssignment.objects.filter(
-                user=user, is_active=True, department__can_create_tasks=True
+                user=user, is_active=True, department__isnull=False
+            ).select_related("department").first()
+            dept = assignment.department if assignment else None
+        else:
+            assignment = UserRoleAssignment.objects.filter(
+                user=user, is_active=True
+            ).filter(
+                DQ(department__can_create_tasks=True)
+                | DQ(department__dept_type="TASK_CONTROL")
             ).select_related("department").first()
             if not assignment:
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied("Sizda topshiriq yaratish huquqi yo'q")
             dept = assignment.department
-        else:
-            from apps.accounts.models import UserRoleAssignment
-            assignment = UserRoleAssignment.objects.filter(
-                user=user, is_active=True, department__isnull=False
-            ).select_related("department").first()
-            dept = assignment.department if assignment else None
 
-        task = serializer.save(creator=user, creating_department=dept)
+        # targets — validated_data dan olib tashlab, qo'lda ishlaymiz
+        targets_data = serializer.validated_data.pop("targets", [])
+        first = targets_data[0] if targets_data else {}
+
+        task = serializer.save(
+            creator=user,
+            creating_department=dept,
+            target_organization_id=first.get("organization"),
+            target_department_id=first.get("department"),
+        )
         task._actor = user
+
+        # Har bir manzil uchun TaskOrganizationTarget yaratamiz
+        for t in targets_data:
+            TaskOrganizationTarget.objects.get_or_create(
+                task=task,
+                organization_id=t.get("organization"),
+                defaults={"department_id": t.get("department")},
+            )
 
     def get_permissions(self):
         if self.action == "create":
@@ -114,13 +146,31 @@ class TaskViewSet(viewsets.ModelViewSet):
     def assignees(self, request, pk=None):
         task = self.get_object()
         if request.method == "GET":
-            return Response(TaskAssigneeSerializer(task.assignees.all(), many=True).data)
+            return Response(TaskAssigneeSerializer(task.assignees.select_related(
+                "user", "organization", "department"
+            ).all(), many=True).data)
 
-        user_id = request.data.get("user")
+        user_id    = request.data.get("user")
+        is_primary = bool(request.data.get("is_primary", False))
+        is_leader  = bool(request.data.get("is_leader",  False))
+        org_id     = request.data.get("organization")
+        dept_id    = request.data.get("department")
+
         user = get_object_or_404(User, id=user_id, is_active=True)
+
+        # Faqat bitta asosiy ijrochi bo'lishi mumkin
+        if is_primary:
+            task.assignees.filter(is_primary=True).update(is_primary=False)
+
         assignee, created = TaskAssignee.objects.get_or_create(
             task=task, user=user,
-            defaults={"assigned_by": request.user},
+            defaults={
+                "assigned_by":   request.user,
+                "organization_id": org_id,
+                "department_id":   dept_id,
+                "is_primary":    is_primary,
+                "is_leader":     is_leader,
+            },
         )
         if not created:
             return Response({"detail": "Ijrochi allaqachon biriktirilgan"}, status=status.HTTP_400_BAD_REQUEST)

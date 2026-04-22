@@ -1,4 +1,4 @@
-from rest_framework import generics, status, viewsets
+from rest_framework import generics, status, viewsets, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -6,12 +6,13 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
+from django.db.models import Q
 from django.shortcuts import get_object_or_404
 
 from .models import User, UserRoleAssignment
 from .serializers import (
     RegisterSerializer, UserProfileSerializer,
-    UserListSerializer, RoleAssignmentSerializer, AssignRoleSerializer,
+    UserListSerializer, UserBasicSerializer, RoleAssignmentSerializer, AssignRoleSerializer,
 )
 from .permissions import IsSuperAdmin
 
@@ -73,6 +74,71 @@ class GoogleAuthView(APIView):
             return Response({"error": "Google token noto'g'ri yoki muddati o'tgan"}, status=status.HTTP_400_BAD_REQUEST)
         except Exception:
             return Response({"error": "Google autentifikatsiyada xatolik"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+class PublicUserSearchView(generics.ListAPIView):
+    """
+    Authenticated foydalanuvchilar uchun xodim/rahbar qidirish.
+
+    Query params:
+      - departments : vergul bilan ajratilgan bo'lim IDlari  (1,2,3)
+      - organization: bitta tashkilot ID (rahbar qidirish uchun)
+      - role        : vergul bilan ajratilgan rollar (BRANCH_LEADER,INSTITUTE_LEADER)
+      - search      : ism / familiya / email bo'yicha qidiruv
+    """
+    serializer_class = UserBasicSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = User.objects.filter(is_active=True)
+        params = self.request.query_params
+
+        depts_param = params.get("departments", "").strip()
+        org_param   = params.get("organization", "").strip()
+        role_param  = params.get("role", "").strip()
+
+        # Kamida bitta filter bo'lishi kerak
+        if not depts_param and not org_param and not role_param:
+            return qs.none()
+
+        # Bo'limlar bo'yicha filterlash
+        if depts_param:
+            dept_ids = [int(d) for d in depts_param.split(",") if d.strip().isdigit()]
+            if not dept_ids:
+                return qs.none()
+            qs = qs.filter(
+                role_assignments__department_id__in=dept_ids,
+                role_assignments__is_active=True,
+            ).distinct()
+
+        # Tashkilot bo'yicha filterlash (rahbar qidirish)
+        if org_param and org_param.isdigit():
+            qs = qs.filter(
+                role_assignments__organization_id=int(org_param),
+                role_assignments__is_active=True,
+            ).distinct()
+
+        # Rol bo'yicha filterlash
+        if role_param:
+            roles = [r.strip() for r in role_param.split(",") if r.strip()]
+            if roles:
+                qs = qs.filter(
+                    role_assignments__role__in=roles,
+                    role_assignments__is_active=True,
+                ).distinct()
+
+        # Qidiruv
+        search = params.get("search", "").strip()
+        if search:
+            qs = qs.filter(
+                Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
+
+        return qs.prefetch_related(
+            "role_assignments__department"
+        ).order_by("last_name", "first_name")
 
 
 class RegisterView(generics.CreateAPIView):

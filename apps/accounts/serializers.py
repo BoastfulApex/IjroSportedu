@@ -61,6 +61,8 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
     role_display = serializers.CharField(source="get_role_display", read_only=True)
     organization_name = serializers.CharField(source="organization.name", read_only=True)
     department_name = serializers.CharField(source="department.name", read_only=True)
+    department_type = serializers.CharField(source="department.dept_type", read_only=True)
+    can_create_tasks = serializers.BooleanField(source="department.can_create_tasks", read_only=True)
     chair_name = serializers.CharField(source="chair.name", read_only=True)
 
     class Meta:
@@ -68,10 +70,39 @@ class RoleAssignmentSerializer(serializers.ModelSerializer):
         fields = [
             "id", "role", "role_display",
             "organization", "organization_name",
-            "department", "department_name",
+            "department", "department_name", "department_type", "can_create_tasks",
             "chair", "chair_name",
             "is_active", "assigned_at",
         ]
+
+
+class UserBasicSerializer(serializers.ModelSerializer):
+    """Task ijrochi tanlash uchun minimal foydalanuvchi ma'lumoti."""
+    full_name = serializers.CharField(read_only=True)
+    department_name = serializers.SerializerMethodField()
+    role_display = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ["id", "email", "full_name", "first_name", "last_name",
+                  "department_name", "role_display"]
+
+    def get_department_name(self, obj):
+        assignment = (
+            obj.role_assignments
+            .filter(is_active=True, department__isnull=False)
+            .select_related("department")
+            .first()
+        )
+        return assignment.department.name if assignment else None
+
+    def get_role_display(self, obj):
+        assignment = (
+            obj.role_assignments
+            .filter(is_active=True)
+            .first()
+        )
+        return assignment.get_role_display() if assignment else None
 
 
 class AssignRoleSerializer(serializers.ModelSerializer):

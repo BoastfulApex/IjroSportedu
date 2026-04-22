@@ -22,15 +22,23 @@ class Task(models.Model):
         LOW = "LOW", "Past"
 
     VALID_TRANSITIONS = {
-        Status.CREATED: [Status.ASSIGNED],
-        Status.ASSIGNED: [Status.ACCEPTED, Status.RETURNED],
-        Status.ACCEPTED: [Status.IN_PROGRESS],
-        Status.IN_PROGRESS: [Status.SUBMITTED],
-        Status.SUBMITTED: [Status.REVIEWING],
-        Status.REVIEWING: [Status.APPROVED, Status.RETURNED],
-        Status.APPROVED: [Status.CLOSED],
-        Status.RETURNED: [Status.IN_PROGRESS, Status.ASSIGNED],
-        Status.CLOSED: [],
+        # To'liq zanjir:
+        # CREATED → ACCEPTED → IN_PROGRESS → SUBMITTED → APPROVED → CLOSED
+        #                                 ↘ RETURNED ↙  (istalgan bosqichda)
+        # SUBMITTED → APPROVED  : target bo'lim boshlig'i tasdiqlaydi
+        # APPROVED  → CLOSED    : monitoring bo'lim qabul qilib yopadi
+        # APPROVED  → RETURNED  : monitoring bo'lim rad etadi → ijrochiga qaytadi
+        # SUBMITTED → RETURNED  : target bo'lim boshlig'i rad etadi → ijrochiga qaytadi
+        Status.CREATED:     [Status.ACCEPTED, Status.RETURNED],
+        Status.ACCEPTED:    [Status.IN_PROGRESS, Status.RETURNED],
+        Status.IN_PROGRESS: [Status.SUBMITTED, Status.RETURNED],
+        Status.SUBMITTED:   [Status.APPROVED, Status.RETURNED],
+        Status.APPROVED:    [Status.CLOSED, Status.RETURNED],
+        Status.RETURNED:    [Status.IN_PROGRESS],
+        Status.CLOSED:      [],
+        # Eski ma'lumotlar bilan orqaga moslik uchun:
+        Status.ASSIGNED:    [Status.ACCEPTED, Status.RETURNED],
+        Status.REVIEWING:   [Status.APPROVED, Status.RETURNED],
     }
 
     title = models.CharField(max_length=500, db_index=True)
@@ -93,6 +101,33 @@ class Task(models.Model):
         return new_status in self.VALID_TRANSITIONS.get(self.status, [])
 
 
+class TaskOrganizationTarget(models.Model):
+    """
+    Bir topshiriq bir nechta tashkilot/bo'limga biriktirilishi mumkin.
+    Birinchi yozuv task.target_organization ga ham mos keladi (backward compat).
+    """
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="org_targets")
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="task_org_targets",
+    )
+    department = models.ForeignKey(
+        "organizations.Department",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="task_org_targets",
+    )
+
+    class Meta:
+        unique_together = ["task", "organization"]
+        verbose_name = "Topshiriq manzili"
+        verbose_name_plural = "Topshiriq manzillari"
+
+    def __str__(self):
+        return f"{self.task.title} → {self.organization.name}"
+
+
 class TaskAssignee(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="assignees")
     user = models.ForeignKey(
@@ -100,6 +135,21 @@ class TaskAssignee(models.Model):
         on_delete=models.CASCADE,
         related_name="assigned_tasks",
     )
+    # Qaysi tashkilot / bo'lim nomidan biriktirildi (ko'rsatish uchun)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="task_assignees",
+    )
+    department = models.ForeignKey(
+        "organizations.Department",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="task_assignees",
+    )
+    is_primary = models.BooleanField(default=False, verbose_name="Asosiy ijrochi")
+    is_leader  = models.BooleanField(default=False, verbose_name="Rahbar mas'ul")
     assigned_at = models.DateTimeField(auto_now_add=True)
     assigned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

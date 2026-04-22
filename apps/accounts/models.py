@@ -43,8 +43,9 @@ class User(AbstractBaseUser, PermissionsMixin):
         return qs.exists()
 
     def is_task_controller(self):
-        return self.role_assignments.filter(
-            role=UserRoleAssignment.Role.TASK_CONTROLLER, is_active=True
+        return self.role_assignments.filter(is_active=True).filter(
+            models.Q(role=UserRoleAssignment.Role.TASK_CONTROLLER)
+            | models.Q(department__dept_type="TASK_CONTROL")
         ).exists()
 
     def is_super_admin(self):
@@ -56,6 +57,27 @@ class User(AbstractBaseUser, PermissionsMixin):
         return self.role_assignments.filter(
             role=UserRoleAssignment.Role.INSTITUTE_LEADER, is_active=True
         ).exists()
+
+    def is_branch_leader(self):
+        return self.role_assignments.filter(
+            role=UserRoleAssignment.Role.BRANCH_LEADER, is_active=True
+        ).exists()
+
+    def get_report_org_ids(self):
+        """
+        Foydalanuvchi ko'ra oladigan tashkilot ID lari.
+        - Super admin / task controller / institute leader → None (hamma)
+        - Branch leader → faqat o'z filialini
+        """
+        if self.is_super_admin() or self.is_task_controller() or self.is_institute_leader():
+            return None  # cheklovsiz
+        if self.is_branch_leader():
+            return list(
+                self.role_assignments.filter(
+                    role=UserRoleAssignment.Role.BRANCH_LEADER, is_active=True
+                ).exclude(organization=None).values_list("organization_id", flat=True)
+            )
+        return []
 
 
 class UserRoleAssignment(models.Model):
