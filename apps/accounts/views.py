@@ -21,6 +21,10 @@ class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
+        import traceback
+        import logging
+        logger = logging.getLogger(__name__)
+
         credential = request.data.get("credential")
         if not credential:
             return Response({"error": "credential maydoni kerak"}, status=status.HTTP_400_BAD_REQUEST)
@@ -42,38 +46,49 @@ class GoogleAuthView(APIView):
             if not idinfo.get("email_verified", False):
                 return Response({"error": "Email tasdiqlanmagan"}, status=status.HTTP_400_BAD_REQUEST)
 
-            first_name = idinfo.get("given_name", "")
-            last_name = idinfo.get("family_name", "")
+            # Google ba'zan family_name bermaydi — bo'sh string bilan ishlaymiz
+            first_name = idinfo.get("given_name", "") or ""
+            last_name  = idinfo.get("family_name", "") or ""
+
+            # Agar ism yo'q bo'lsa, email dan chiqaramiz
+            if not first_name and not last_name:
+                first_name = email.split("@")[0]
 
             user, created = User.objects.get_or_create(
                 email=email,
-                defaults={"first_name": first_name, "last_name": last_name},
+                defaults={
+                    "first_name": first_name,
+                    "last_name":  last_name,
+                },
             )
 
             if not created:
+                changed = False
                 if first_name and not user.first_name:
                     user.first_name = first_name
+                    changed = True
                 if last_name and not user.last_name:
                     user.last_name = last_name
-                user.save(update_fields=["first_name", "last_name"])
+                    changed = True
+                if changed:
+                    user.save(update_fields=["first_name", "last_name"])
 
             if not user.is_active:
                 return Response({"error": "Foydalanuvchi bloklangan"}, status=status.HTTP_403_FORBIDDEN)
 
-            if not user.has_usable_password():
-                pass  # Google user — parolsiz ishlaydi
-
             refresh = RefreshToken.for_user(user)
             return Response({
-                "access": str(refresh.access_token),
+                "access":  str(refresh.access_token),
                 "refresh": str(refresh),
-                "is_new": created,
+                "is_new":  created,
             })
 
-        except ValueError:
-            return Response({"error": "Google token noto'g'ri yoki muddati o'tgan"}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception:
-            return Response({"error": "Google autentifikatsiyada xatolik"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except ValueError as e:
+            logger.warning("Google token xatosi: %s", e)
+            return Response({"error": f"Google token noto'g'ri: {e}"}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error("Google auth kutilmagan xato:\n%s", traceback.format_exc())
+            return Response({"error": f"Xato: {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class PublicUserSearchView(generics.ListAPIView):
