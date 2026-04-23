@@ -151,8 +151,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             TaskComment.objects.create(task=task, author=request.user, content=comment_text)
 
         # Trigger notification
-        from apps.notifications.tasks import send_status_change_notification
-        send_status_change_notification.delay(task.id, old_status, new_status)
+        try:
+            from apps.notifications.tasks import send_status_change_notification
+            send_status_change_notification.delay(task.id, old_status, new_status)
+        except Exception:
+            pass
 
         return Response(TaskDetailSerializer(task, context={"request": request}).data)
 
@@ -257,8 +260,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         comment = serializer.save(task=task, author=request.user)
 
-        from apps.notifications.tasks import send_comment_notification
-        send_comment_notification.delay(task.id, comment.id, request.user.id)
+        try:
+            from apps.notifications.tasks import send_comment_notification
+            send_comment_notification.delay(task.id, comment.id, request.user.id)
+        except Exception:
+            pass
 
         return Response(TaskCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
 

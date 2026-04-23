@@ -71,6 +71,9 @@ def log_assignee_added(sender, instance, created, **kwargs):
             action="Ijrochi qo'shildi",
             new_value=instance.user.full_name,
         )
-        # Trigger notification async
-        from apps.notifications.tasks import send_task_assignment_notification
-        send_task_assignment_notification.delay(instance.task.id, instance.user.id)
+        # Trigger notification async (Redis/Celery mavjud bo'lmasa ham ishlasin)
+        try:
+            from apps.notifications.tasks import send_task_assignment_notification
+            send_task_assignment_notification.delay(instance.task.id, instance.user.id)
+        except Exception:
+            pass
