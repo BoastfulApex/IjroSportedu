@@ -32,27 +32,22 @@ class OrganizationSerializer(serializers.ModelSerializer):
 
 class DepartmentSerializer(serializers.ModelSerializer):
     organization_name = serializers.CharField(source="organization.name", read_only=True)
-    chairs_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Department
         fields = [
             "id", "name", "organization", "organization_name",
             "dept_type", "can_create_tasks", "can_assign_cross_branch",
-            "is_active", "created_at", "chairs_count",
+            "is_active", "created_at",
         ]
-
-    def get_chairs_count(self, obj):
-        return obj.chairs.filter(is_active=True).count()
 
 
 class ChairSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source="department.name", read_only=True)
-    organization_name = serializers.CharField(source="department.organization.name", read_only=True)
+    organization_name = serializers.CharField(source="organization.name", read_only=True)
 
     class Meta:
         model = Chair
         fields = [
-            "id", "name", "department", "department_name",
-            "organization_name", "is_active", "created_at",
+            "id", "name", "organization", "organization_name",
+            "is_active", "created_at",
         ]

@@ -126,7 +126,6 @@ class TaskOrganizationTarget(models.Model):
     )
 
     class Meta:
-        unique_together = ["task", "organization", "department", "chair"]
         verbose_name = "Topshiriq manzili"
         verbose_name_plural = "Topshiriq manzillari"
 

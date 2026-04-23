@@ -72,8 +72,8 @@ class Department(models.Model):
 
 class Chair(models.Model):
     name = models.CharField(max_length=255, db_index=True)
-    department = models.ForeignKey(
-        Department, on_delete=models.CASCADE, related_name="chairs"
+    organization = models.ForeignKey(
+        Organization, on_delete=models.CASCADE, related_name="chairs"
     )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -81,7 +81,7 @@ class Chair(models.Model):
     class Meta:
         verbose_name = "Kafedra"
         verbose_name_plural = "Kafedralar"
-        ordering = ["department", "name"]
+        ordering = ["organization", "name"]
 
     def __str__(self):
-        return f"{self.name} — {self.department.name}"
+        return f"{self.name} — {self.organization.name}"

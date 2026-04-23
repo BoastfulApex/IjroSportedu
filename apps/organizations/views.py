@@ -20,7 +20,7 @@ class OrganizationViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"])
     def departments(self, request, pk=None):
         org = self.get_object()
-        depts = org.departments.filter(is_active=True).prefetch_related("chairs")
+        depts = org.departments.filter(is_active=True)
         return Response(DepartmentSerializer(depts, many=True).data)
 
     @action(detail=True, methods=["get"])
@@ -31,28 +31,20 @@ class OrganizationViewSet(viewsets.ModelViewSet):
 
 
 class DepartmentViewSet(viewsets.ModelViewSet):
-    queryset = Department.objects.select_related("organization").prefetch_related(
-        "chairs"
-    ).order_by("organization", "name")
+    queryset = Department.objects.select_related("organization").order_by("organization", "name")
     serializer_class = DepartmentSerializer
     permission_classes = [IsSuperAdmin]
     filterset_fields = ["organization", "dept_type", "can_create_tasks", "is_active"]
     search_fields = ["name"]
 
-    @action(detail=True, methods=["get"])
-    def chairs(self, request, pk=None):
-        dept = self.get_object()
-        chairs = dept.chairs.filter(is_active=True)
-        return Response(ChairSerializer(chairs, many=True).data)
-
 
 class ChairViewSet(viewsets.ModelViewSet):
-    queryset = Chair.objects.select_related("department__organization").order_by(
-        "department", "name"
+    queryset = Chair.objects.select_related("organization").order_by(
+        "organization", "name"
     )
     serializer_class = ChairSerializer
     permission_classes = [IsSuperAdmin]
-    filterset_fields = ["department", "is_active"]
+    filterset_fields = ["organization", "is_active"]
     search_fields = ["name"]
 
 

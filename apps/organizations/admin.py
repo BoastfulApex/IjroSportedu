@@ -18,6 +18,6 @@ class DepartmentAdmin(admin.ModelAdmin):
 
 @admin.register(Chair)
 class ChairAdmin(admin.ModelAdmin):
-    list_display = ["name", "department", "is_active"]
-    list_filter = ["is_active"]
+    list_display = ["name", "organization", "is_active"]
+    list_filter = ["organization", "is_active"]
     search_fields = ["name"]
