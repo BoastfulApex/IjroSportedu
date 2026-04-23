@@ -1,6 +1,5 @@
 #!/bin/bash
-# BuyruqSportedu — Deploy skripti
-# Har safar yangi versiya chiqarganda ishlatiladi
+# BuyruqSportedu — ijro.sportedu.uz deploy skripti
 # Ishlatish: sudo bash deploy.sh
 
 set -e
@@ -8,45 +7,50 @@ set -e
 BACKEND_DIR="/var/www/buyruqsportedu/backend"
 FRONTEND_DIR="/var/www/buyruqsportedu/frontend"
 
-echo "=== 1. Kod yuklash ==="
-# Agar git bilan ishlasangiz:
-# cd $BACKEND_DIR && git pull origin main
-
-echo "=== 2. Backend — virtual muhit va kutubxonalar ==="
+echo "=== 1. Backend — virtual muhit ==="
 cd $BACKEND_DIR
-python3.11 -m venv venv
+python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements/production.txt
+pip install google-auth
 
-echo "=== 3. Backend — .env fayl nusxalash ==="
-# .env.production faylini .env ga ko'chiring
+echo "=== 2. .env sozlash ==="
 cp .env.production .env
 
-echo "=== 4. Backend — migrate va static fayllar ==="
+echo "=== 3. Migrate va static fayllar ==="
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
+
+echo "=== 4. Log va run papkalar ==="
+mkdir -p /var/log/buyruqsportedu
+mkdir -p /var/run/buyruqsportedu
+chown -R www-data:www-data /var/log/buyruqsportedu
+chown -R www-data:www-data /var/run/buyruqsportedu
+chown -R www-data:www-data $BACKEND_DIR
 
 echo "=== 5. Frontend — build ==="
 cd $FRONTEND_DIR
 npm ci
 npm run build
+chown -R www-data:www-data $FRONTEND_DIR
 
-echo "=== 6. Systemd service sozlash ==="
+echo "=== 6. Systemd service ==="
 cp $BACKEND_DIR/deploy/buyruqsportedu.service /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable buyruqsportedu
 systemctl restart buyruqsportedu
+systemctl status buyruqsportedu --no-pager
 
-echo "=== 7. Nginx sozlash ==="
-# SERVER_IP ni haqiqiy IP bilan almashtiring
-sed -i "s/SERVER_IP/$(hostname -I | awk '{print $1}')/g" $BACKEND_DIR/deploy/nginx.conf
+echo "=== 7. Nginx ==="
 cp $BACKEND_DIR/deploy/nginx.conf /etc/nginx/sites-available/buyruqsportedu
 ln -sf /etc/nginx/sites-available/buyruqsportedu /etc/nginx/sites-enabled/
 rm -f /etc/nginx/sites-enabled/default
 nginx -t && systemctl restart nginx
 
 echo ""
-echo "=== Deploy muvaffaqiyatli tugadi! ==="
-echo "Backend: http://$(hostname -I | awk '{print $1}')/api/"
-echo "Frontend: http://$(hostname -I | awk '{print $1}')/"
+echo "============================================"
+echo " Deploy muvaffaqiyatli tugadi!"
+echo " http://ijro.sportedu.uz"
+echo " http://192.168.10.242"
+echo "============================================"

@@ -1,18 +1,18 @@
 #!/bin/bash
-# BuyruqSportedu — Ubuntu 22.04 server sozlash skripti
+# BuyruqSportedu — Ubuntu server birinchi marta sozlash
 # Ishlatish: sudo bash setup_server.sh
 
 set -e
 
-echo "=== 1. Tizim paketlarini yangilash ==="
+echo "=== 1. Tizim yangilash ==="
 apt update && apt upgrade -y
-apt install -y python3.11 python3.11-venv python3-pip postgresql postgresql-contrib nginx redis-server git curl
+apt install -y python3 python3-venv python3-pip postgresql postgresql-contrib nginx redis-server git curl
 
 echo "=== 2. Node.js 20 o'rnatish ==="
 curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
 apt install -y nodejs
 
-echo "=== 3. PostgreSQL sozlash ==="
+echo "=== 3. PostgreSQL — database va user yaratish ==="
 sudo -u postgres psql <<EOF
 CREATE DATABASE buyruqsportedu;
 CREATE USER buyruquser WITH PASSWORD 'kuchli_parol_bu_yerda';
@@ -27,14 +27,16 @@ EOF
 echo "=== 4. Papkalar yaratish ==="
 mkdir -p /var/www/buyruqsportedu/backend
 mkdir -p /var/www/buyruqsportedu/frontend
-mkdir -p /var/log/buyruqsportedu
-mkdir -p /var/run/buyruqsportedu
-chown -R www-data:www-data /var/www/buyruqsportedu
-chown -R www-data:www-data /var/log/buyruqsportedu
-chown -R www-data:www-data /var/run/buyruqsportedu
 
-echo "=== 5. Redis va PostgreSQL ishga tushirish ==="
+echo "=== 5. Redis va PostgreSQL autostart ==="
 systemctl enable redis-server postgresql
 systemctl start redis-server postgresql
 
-echo "=== Tayyor! Endi deploy.sh ni ishga tushiring ==="
+echo ""
+echo "============================================"
+echo " Server sozlandi!"
+echo " Endi kod fayllarini yuklang:"
+echo " /var/www/buyruqsportedu/backend/  — Django"
+echo " /var/www/buyruqsportedu/frontend/ — React"
+echo " Keyin: sudo bash deploy.sh"
+echo "============================================"
