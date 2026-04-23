@@ -106,13 +106,18 @@ class TaskViewSet(viewsets.ModelViewSet):
         task._actor = user
 
         # Har bir manzil uchun TaskOrganizationTarget yaratamiz
+        import logging
+        logger = logging.getLogger(__name__)
         for t in targets_data:
-            TaskOrganizationTarget.objects.create(
-                task=task,
-                organization_id=t.get("organization"),
-                department_id=t.get("department"),
-                chair_id=t.get("chair"),
-            )
+            try:
+                TaskOrganizationTarget.objects.create(
+                    task=task,
+                    organization_id=t.get("organization"),
+                    department_id=t.get("department"),
+                    chair_id=t.get("chair"),
+                )
+            except Exception as e:
+                logger.error(f"TaskOrganizationTarget yaratishda xatolik: {e}, data={t}")
 
     def get_permissions(self):
         if self.action == "create":
