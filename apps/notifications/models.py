@@ -2,6 +2,26 @@ from django.db import models
 from django.conf import settings
 
 
+class PushSubscription(models.Model):
+    """Browser Web Push obunasi."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="push_subscriptions",
+    )
+    endpoint = models.TextField(unique=True)
+    p256dh   = models.TextField()
+    auth     = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Push obuna"
+        verbose_name_plural = "Push obunalar"
+
+    def __str__(self):
+        return f"{self.user.email} — {self.endpoint[:60]}"
+
+
 class Notification(models.Model):
     class NotifType(models.TextChoices):
         TASK_ASSIGNED = "TASK_ASSIGNED", "Topshiriq biriktirildi"

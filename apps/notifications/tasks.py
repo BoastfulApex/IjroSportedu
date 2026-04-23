@@ -15,6 +15,46 @@ def _create_notification(recipient_id, title, message, notif_type, task_id=None)
     )
 
 
+def _send_web_push(user_id: int, title: str, body: str, task_id=None):
+    """Foydalanuvchining barcha browser subscriptionlariga push yuboradi."""
+    try:
+        if not settings.VAPID_PRIVATE_KEY or not settings.VAPID_PUBLIC_KEY:
+            return
+        from .models import PushSubscription
+        from pywebpush import webpush, WebPushException
+        import json
+
+        subs = list(PushSubscription.objects.filter(user_id=user_id))
+        if not subs:
+            return
+
+        payload = json.dumps({
+            "title": title,
+            "body":  body,
+            "url":   f"/tasks/{task_id}" if task_id else "/notifications",
+        })
+
+        dead = []
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub.endpoint,
+                        "keys": {"p256dh": sub.p256dh, "auth": sub.auth},
+                    },
+                    data=payload,
+                    vapid_private_key=settings.VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": f"mailto:{settings.VAPID_ADMIN_EMAIL}"},
+                )
+            except WebPushException as e:
+                if e.response and e.response.status_code in (404, 410):
+                    dead.append(sub.id)
+        if dead:
+            PushSubscription.objects.filter(id__in=dead).delete()
+    except Exception:
+        pass
+
+
 @shared_task(bind=True, max_retries=3)
 def send_task_assignment_notification(self, task_id, user_id):
     try:
@@ -35,6 +75,7 @@ def send_task_assignment_notification(self, task_id, user_id):
             user.id, title, message,
             "TASK_ASSIGNED", task_id=task.id,
         )
+        _send_web_push(user.id, title, message, task_id=task.id)
 
         send_mail(
             subject=title,
@@ -69,6 +110,7 @@ def send_status_change_notification(self, task_id, old_status, new_status):
 
         for rid in recipients:
             _create_notification(rid, title, message, "TASK_STATUS_CHANGED", task_id=task.id)
+            _send_web_push(rid, title, message, task_id=task.id)
 
         from apps.accounts.models import User
         emails = list(User.objects.filter(id__in=recipients).values_list("email", flat=True))
@@ -103,6 +145,7 @@ def send_comment_notification(self, task_id, comment_id, author_id):
 
         for rid in recipients:
             _create_notification(rid, title, message, "TASK_COMMENT", task_id=task.id)
+            _send_web_push(rid, title, message, task_id=task.id)
     except Exception as exc:
         raise self.retry(exc=exc, countdown=30)
 
@@ -153,3 +196,4 @@ def send_deadline_warnings():
             recipients.add(a.user_id)
         for rid in recipients:
             _create_notification(rid, title, message, "DEADLINE_WARNING", task_id=task.id)
+            _send_web_push(rid, title, message, task_id=task.id)

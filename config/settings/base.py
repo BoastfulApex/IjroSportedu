@@ -172,6 +172,11 @@ DEFAULT_FROM_EMAIL = env("DEFAULT_FROM_EMAIL", default="BuyruqSportedu <noreply@
 
 FRONTEND_URL = env("FRONTEND_URL", default="http://localhost:5173")
 
+# Web Push VAPID
+VAPID_PUBLIC_KEY  = env("VAPID_PUBLIC_KEY",  default="")
+VAPID_PRIVATE_KEY = env("VAPID_PRIVATE_KEY", default="")
+VAPID_ADMIN_EMAIL = env("VAPID_ADMIN_EMAIL", default="admin@sportedu.uz")
+
 # Google OAuth
 GOOGLE_CLIENT_ID = env("GOOGLE_CLIENT_ID", default="")
 
