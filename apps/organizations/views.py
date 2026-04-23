@@ -59,3 +59,9 @@ class PublicDepartmentViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = Department.objects.filter(is_active=True).select_related("organization")
     serializer_class = DepartmentSerializer
     filterset_fields = ["organization", "dept_type"]
+
+
+class PublicChairViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = Chair.objects.filter(is_active=True).select_related("organization")
+    serializer_class = ChairSerializer
+    filterset_fields = ["organization"]
