@@ -1,0 +1,22 @@
+[Unit]
+Description=IjroSportedu Celery Worker
+After=network.target redis.service postgresql.service
+Requires=redis.service
+
+[Service]
+User=root
+Group=root
+WorkingDirectory=/home/ubuntu/IjroSportedu/IjroSportedu
+EnvironmentFile=/home/ubuntu/IjroSportedu/IjroSportedu/.env
+ExecStart=/home/ubuntu/IjroSportedu/IjroSportedu/venv/bin/celery \
+    -A config worker \
+    --loglevel=info \
+    --concurrency=4 \
+    --logfile=/var/log/buyruqsportedu/celery.log \
+    --pidfile=/var/run/buyruqsportedu/celery.pid
+ExecStop=/bin/kill -s TERM $MAINPID
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
