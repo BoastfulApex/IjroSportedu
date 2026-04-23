@@ -188,12 +188,23 @@ def task_attachment_path(instance, filename):
 
 
 class TaskAttachment(models.Model):
+    class AttachmentType(models.TextChoices):
+        TASK_FILE   = "TASK_FILE",   "Topshiriq fayli"
+        REPORT_FILE = "REPORT_FILE", "Hisobot fayli"
+
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="attachments")
     file = models.FileField(upload_to=task_attachment_path)
     filename = models.CharField(max_length=255)
     file_size = models.PositiveIntegerField(default=0)
+    attachment_type = models.CharField(
+        max_length=15,
+        choices=AttachmentType.choices,
+        default=AttachmentType.TASK_FILE,
+        db_index=True,
+    )
     uploaded_by = models.ForeignKey(
-        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True,
+        related_name="uploaded_attachments",
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 

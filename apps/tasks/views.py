@@ -225,11 +225,16 @@ class TaskViewSet(viewsets.ModelViewSet):
         if file.size > settings.MAX_UPLOAD_SIZE:
             return Response({"detail": "Fayl hajmi 10MB dan oshmasligi kerak"}, status=400)
 
+        attachment_type = request.data.get("attachment_type", TaskAttachment.AttachmentType.TASK_FILE)
+        if attachment_type not in TaskAttachment.AttachmentType.values:
+            attachment_type = TaskAttachment.AttachmentType.TASK_FILE
+
         attachment = TaskAttachment.objects.create(
             task=task,
             file=file,
             filename=file.name,
             file_size=file.size,
+            attachment_type=attachment_type,
             uploaded_by=request.user,
         )
         TaskHistory.objects.create(

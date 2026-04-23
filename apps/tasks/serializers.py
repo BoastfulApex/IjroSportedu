@@ -24,14 +24,19 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
 
 
 class TaskAttachmentSerializer(serializers.ModelSerializer):
-    uploaded_by_name = serializers.CharField(source="uploaded_by.full_name", read_only=True)
+    uploaded_by_name  = serializers.CharField(source="uploaded_by.full_name", read_only=True)
+    uploaded_by_email = serializers.EmailField(source="uploaded_by.email",    read_only=True)
+    attachment_type_display = serializers.CharField(
+        source="get_attachment_type_display", read_only=True
+    )
     file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = TaskAttachment
         fields = [
             "id", "file", "file_url", "filename", "file_size",
-            "uploaded_by", "uploaded_by_name", "uploaded_at",
+            "attachment_type", "attachment_type_display",
+            "uploaded_by", "uploaded_by_name", "uploaded_by_email", "uploaded_at",
         ]
         read_only_fields = ["filename", "file_size", "uploaded_by", "uploaded_at"]
 
