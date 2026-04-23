@@ -97,6 +97,7 @@ class PublicUserSearchView(generics.ListAPIView):
 
     Query params:
       - departments : vergul bilan ajratilgan bo'lim IDlari  (1,2,3)
+      - chairs      : vergul bilan ajratilgan kafedra IDlari  (1,2,3)
       - organization: bitta tashkilot ID (rahbar qidirish uchun)
       - role        : vergul bilan ajratilgan rollar (BRANCH_LEADER,INSTITUTE_LEADER)
       - search      : ism / familiya / email bo'yicha qidiruv
@@ -108,16 +109,27 @@ class PublicUserSearchView(generics.ListAPIView):
         qs = User.objects.filter(is_active=True)
         params = self.request.query_params
 
-        depts_param = params.get("departments", "").strip()
-        org_param   = params.get("organization", "").strip()
-        role_param  = params.get("role", "").strip()
+        depts_param  = params.get("departments", "").strip()
+        chairs_param = params.get("chairs", "").strip()
+        org_param    = params.get("organization", "").strip()
+        role_param   = params.get("role", "").strip()
 
         # Kamida bitta filter bo'lishi kerak
-        if not depts_param and not org_param and not role_param:
+        if not depts_param and not chairs_param and not org_param and not role_param:
             return qs.none()
 
+        # Kafedralar bo'yicha filterlash (kafedra mudiri va xodimlari)
+        if chairs_param:
+            chair_ids = [int(c) for c in chairs_param.split(",") if c.strip().isdigit()]
+            if not chair_ids:
+                return qs.none()
+            qs = qs.filter(
+                role_assignments__chair_id__in=chair_ids,
+                role_assignments__is_active=True,
+            ).distinct()
+
         # Bo'limlar bo'yicha filterlash
-        if depts_param:
+        elif depts_param:
             dept_ids = [int(d) for d in depts_param.split(",") if d.strip().isdigit()]
             if not dept_ids:
                 return qs.none()

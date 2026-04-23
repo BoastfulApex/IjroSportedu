@@ -107,10 +107,11 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         # Har bir manzil uchun TaskOrganizationTarget yaratamiz
         for t in targets_data:
-            TaskOrganizationTarget.objects.get_or_create(
+            TaskOrganizationTarget.objects.create(
                 task=task,
                 organization_id=t.get("organization"),
-                defaults={"department_id": t.get("department")},
+                department_id=t.get("department"),
+                chair_id=t.get("chair"),
             )
 
     def get_permissions(self):
@@ -155,6 +156,7 @@ class TaskViewSet(viewsets.ModelViewSet):
         is_leader  = bool(request.data.get("is_leader",  False))
         org_id     = request.data.get("organization")
         dept_id    = request.data.get("department")
+        chair_id   = request.data.get("chair")
 
         user = get_object_or_404(User, id=user_id, is_active=True)
 
@@ -168,6 +170,7 @@ class TaskViewSet(viewsets.ModelViewSet):
                 "assigned_by":   request.user,
                 "organization_id": org_id,
                 "department_id":   dept_id,
+                "chair_id":        chair_id,
                 "is_primary":    is_primary,
                 "is_leader":     is_leader,
             },

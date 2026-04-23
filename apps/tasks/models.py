@@ -103,7 +103,7 @@ class Task(models.Model):
 
 class TaskOrganizationTarget(models.Model):
     """
-    Bir topshiriq bir nechta tashkilot/bo'limga biriktirilishi mumkin.
+    Bir topshiriq bir nechta tashkilot/bo'lim/kafedraga biriktirilishi mumkin.
     Birinchi yozuv task.target_organization ga ham mos keladi (backward compat).
     """
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="org_targets")
@@ -118,14 +118,25 @@ class TaskOrganizationTarget(models.Model):
         null=True, blank=True,
         related_name="task_org_targets",
     )
+    chair = models.ForeignKey(
+        "organizations.Chair",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="task_org_targets",
+    )
 
     class Meta:
-        unique_together = ["task", "organization"]
+        unique_together = ["task", "organization", "department", "chair"]
         verbose_name = "Topshiriq manzili"
         verbose_name_plural = "Topshiriq manzillari"
 
     def __str__(self):
-        return f"{self.task.title} → {self.organization.name}"
+        parts = [self.organization.name]
+        if self.department:
+            parts.append(self.department.name)
+        if self.chair:
+            parts.append(self.chair.name)
+        return f"{self.task.title} → {' / '.join(parts)}"
 
 
 class TaskAssignee(models.Model):
@@ -135,7 +146,7 @@ class TaskAssignee(models.Model):
         on_delete=models.CASCADE,
         related_name="assigned_tasks",
     )
-    # Qaysi tashkilot / bo'lim nomidan biriktirildi (ko'rsatish uchun)
+    # Qaysi tashkilot / bo'lim / kafedra nomidan biriktirildi (ko'rsatish uchun)
     organization = models.ForeignKey(
         "organizations.Organization",
         on_delete=models.SET_NULL,
@@ -144,6 +155,12 @@ class TaskAssignee(models.Model):
     )
     department = models.ForeignKey(
         "organizations.Department",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="task_assignees",
+    )
+    chair = models.ForeignKey(
+        "organizations.Chair",
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="task_assignees",

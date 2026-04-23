@@ -9,6 +9,7 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
     user_full_name     = serializers.CharField(source="user.full_name",   read_only=True)
     organization_name  = serializers.CharField(source="organization.name",read_only=True)
     department_name    = serializers.CharField(source="department.name",  read_only=True)
+    chair_name         = serializers.CharField(source="chair.name",       read_only=True)
 
     class Meta:
         model = TaskAssignee
@@ -16,6 +17,7 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
             "id", "user", "user_email", "user_full_name",
             "organization", "organization_name",
             "department", "department_name",
+            "chair", "chair_name",
             "is_primary", "is_leader", "assigned_at",
         ]
         read_only_fields = ["assigned_at"]
@@ -65,20 +67,23 @@ class TaskHistorySerializer(serializers.ModelSerializer):
 
 
 class TaskOrganizationTargetSerializer(serializers.ModelSerializer):
-    organization_name = serializers.CharField(source="organization.name", read_only=True)
+    organization_name  = serializers.CharField(source="organization.name",  read_only=True)
     organization_short = serializers.CharField(source="organization.short_name", read_only=True)
-    department_name = serializers.CharField(source="department.name", read_only=True)
+    department_name    = serializers.CharField(source="department.name",    read_only=True)
+    chair_name         = serializers.CharField(source="chair.name",         read_only=True)
 
     class Meta:
         model = TaskOrganizationTarget
         fields = ["id", "organization", "organization_name", "organization_short",
-                  "department", "department_name"]
+                  "department", "department_name",
+                  "chair", "chair_name"]
 
 
 # ── Topshiriq yaratishda manzil inputi ──────────────────────────
 class OrgTargetInputSerializer(serializers.Serializer):
     organization = serializers.IntegerField()
     department   = serializers.IntegerField(required=False, allow_null=True, default=None)
+    chair        = serializers.IntegerField(required=False, allow_null=True, default=None)
 
 
 class TaskListSerializer(serializers.ModelSerializer):
