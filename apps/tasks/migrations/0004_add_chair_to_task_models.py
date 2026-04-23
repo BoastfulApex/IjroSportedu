@@ -10,11 +10,6 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        # unique_together eski qiymatini olib tashlaymiz
-        migrations.AlterUniqueTogether(
-            name='taskorganizationtarget',
-            unique_together=set(),
-        ),
         # TaskAssignee ga chair FK qo'shamiz
         migrations.AddField(
             model_name='taskassignee',
