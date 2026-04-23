@@ -32,7 +32,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         qs = Task.objects.select_related(
             "creator", "creating_department__organization",
             "target_organization", "target_department",
-        ).prefetch_related("assignees__user", "org_targets__organization", "org_targets__department")
+        ).prefetch_related(
+            "assignees__user",
+            "assignees__organization",
+            "assignees__department",
+            "assignees__chair",
+            "org_targets__organization",
+            "org_targets__department",
+            "org_targets__chair",
+        )
 
         # ?my_tasks=true — faqat o'zi ijrochi sifatida biriktirilgan topshiriqlar
         if self.request.query_params.get("my_tasks") == "true":
