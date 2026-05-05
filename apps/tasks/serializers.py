@@ -3,6 +3,11 @@ from django.utils import timezone
 from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
 from apps.accounts.serializers import UserListSerializer
 
+ACTIVE_STATUSES = {
+    Task.Status.CREATED, Task.Status.ASSIGNED, Task.Status.ACCEPTED,
+    Task.Status.IN_PROGRESS, Task.Status.SUBMITTED, Task.Status.REVIEWING,
+}
+
 
 class TaskAssigneeSerializer(serializers.ModelSerializer):
     user_email         = serializers.EmailField(source="user.email",      read_only=True)
@@ -107,6 +112,8 @@ class TaskListSerializer(serializers.ModelSerializer):
     priority_display  = serializers.CharField(source="get_priority_display",  read_only=True)
     status_display    = serializers.CharField(source="get_status_display",    read_only=True)
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
+    # is_overdue — bazadagi qiymat emas, har safar real vaqtda hisoblanadi
+    is_overdue = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -122,6 +129,11 @@ class TaskListSerializer(serializers.ModelSerializer):
 
     def get_assignees_count(self, obj):
         return obj.assignees.count()
+
+    def get_is_overdue(self, obj):
+        if not obj.deadline:
+            return False
+        return obj.deadline < timezone.now() and obj.status in ACTIVE_STATUSES
 
 
 class TaskDetailSerializer(serializers.ModelSerializer):
@@ -143,6 +155,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     priority_display  = serializers.CharField(source="get_priority_display",  read_only=True)
     status_display    = serializers.CharField(source="get_status_display",    read_only=True)
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
+    is_overdue        = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -159,6 +172,11 @@ class TaskDetailSerializer(serializers.ModelSerializer):
 
     def get_comments_count(self, obj):
         return obj.comments.count()
+
+    def get_is_overdue(self, obj):
+        if not obj.deadline:
+            return False
+        return obj.deadline < timezone.now() and obj.status in ACTIVE_STATUSES
 
     def get_valid_transitions(self, obj):
         return Task.VALID_TRANSITIONS.get(obj.status, [])

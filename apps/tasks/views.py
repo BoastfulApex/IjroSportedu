@@ -22,7 +22,7 @@ class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ["status", "priority", "target_organization", "target_department", "is_overdue"]
+    filterset_fields = ["status", "priority", "task_type", "target_organization", "target_department", "is_overdue"]
     search_fields = ["title", "description"]
     ordering_fields = ["created_at", "deadline", "priority", "status"]
     ordering = ["-created_at"]

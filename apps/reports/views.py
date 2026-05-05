@@ -38,24 +38,34 @@ class OverviewReportView(APIView):
 
         by_status = dict(qs.values_list("status").annotate(count=Count("id")))
         by_priority = dict(qs.values_list("priority").annotate(count=Count("id")))
-        overdue = qs.filter(
+
+        overdue_qs = qs.filter(
             deadline__lt=now,
             status__in=[
                 Task.Status.CREATED, Task.Status.ASSIGNED,
                 Task.Status.ACCEPTED, Task.Status.IN_PROGRESS,
                 Task.Status.SUBMITTED, Task.Status.REVIEWING,
             ]
-        ).count()
+        )
+        active_qs = qs.filter(
+            status__in=[Task.Status.IN_PROGRESS, Task.Status.ACCEPTED]
+        )
+        closed_qs = qs.filter(status=Task.Status.CLOSED)
+
+        def by_type(queryset):
+            return dict(queryset.values_list("task_type").annotate(c=Count("id")))
 
         data = {
-            "total": qs.count(),
-            "by_status": by_status,
-            "by_priority": by_priority,
-            "overdue": overdue,
-            "closed_today": qs.filter(
-                status=Task.Status.CLOSED,
-                updated_at__date=now.date(),
-            ).count(),
+            "total":         qs.count(),
+            "by_status":     by_status,
+            "by_priority":   by_priority,
+            "overdue":       overdue_qs.count(),
+            "closed_today":  closed_qs.filter(updated_at__date=now.date()).count(),
+            # Tur bo'yicha breakdownlar
+            "total_by_type":   by_type(qs),
+            "active_by_type":  by_type(active_qs),
+            "closed_by_type":  by_type(closed_qs),
+            "overdue_by_type": by_type(overdue_qs),
         }
 
         if org_ids is None:
