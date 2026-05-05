@@ -104,13 +104,15 @@ class TaskListSerializer(serializers.ModelSerializer):
     )
     assignees_count = serializers.SerializerMethodField()
     assignees = TaskAssigneeSerializer(many=True, read_only=True)
-    priority_display = serializers.CharField(source="get_priority_display", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    priority_display  = serializers.CharField(source="get_priority_display",  read_only=True)
+    status_display    = serializers.CharField(source="get_status_display",    read_only=True)
+    task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
 
     class Meta:
         model = Task
         fields = [
             "id", "title", "priority", "priority_display", "status", "status_display",
+            "task_type", "task_type_display",
             "creator", "creator_name", "creating_department", "creating_department_name",
             "target_organization", "target_organization_name",
             "target_department", "target_department_name",
@@ -138,14 +140,16 @@ class TaskDetailSerializer(serializers.ModelSerializer):
         source="creating_department.name", read_only=True
     )
     valid_transitions = serializers.SerializerMethodField()
-    priority_display = serializers.CharField(source="get_priority_display", read_only=True)
-    status_display = serializers.CharField(source="get_status_display", read_only=True)
+    priority_display  = serializers.CharField(source="get_priority_display",  read_only=True)
+    status_display    = serializers.CharField(source="get_status_display",    read_only=True)
+    task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
 
     class Meta:
         model = Task
         fields = [
             "id", "title", "description", "priority", "priority_display",
             "status", "status_display", "valid_transitions",
+            "task_type", "task_type_display",
             "creator", "creator_name", "creating_department", "creating_department_name",
             "target_organization", "target_organization_name",
             "target_department", "target_department_name",
@@ -185,7 +189,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
         model = Task
         fields = [
             "id",
-            "title", "description", "priority",
+            "title", "description", "priority", "task_type",
             "targets",   # ← bir nechta tashkilot manzillari
             "deadline",
         ]

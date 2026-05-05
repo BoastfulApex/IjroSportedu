@@ -21,6 +21,12 @@ class Task(models.Model):
         MEDIUM = "MEDIUM", "O'rta"
         LOW = "LOW", "Past"
 
+    class TaskType(models.TextChoices):
+        REKTORAT   = "REKTORAT",   "Rektorat topshirig'i"
+        ILMIY      = "ILMIY",      "Ilmiy kengash topshirig'i"
+        FUNKSIONAL = "FUNKSIONAL", "Funksional topshiriq"
+        QOSHIMCHA  = "QOSHIMCHA",  "Qo'shimcha topshiriq"
+
     VALID_TRANSITIONS = {
         # To'liq zanjir:
         # CREATED → ACCEPTED → IN_PROGRESS → SUBMITTED → APPROVED → CLOSED
@@ -40,6 +46,13 @@ class Task(models.Model):
         Status.ASSIGNED:    [Status.ACCEPTED, Status.RETURNED],
         Status.REVIEWING:   [Status.APPROVED, Status.RETURNED],
     }
+
+    task_type = models.CharField(
+        max_length=15,
+        choices=TaskType.choices,
+        default=TaskType.FUNKSIONAL,
+        db_index=True,
+    )
 
     title = models.CharField(max_length=500, db_index=True)
     description = models.TextField(blank=True)
