@@ -35,7 +35,7 @@ class Task(models.Model):
         # APPROVED  → CLOSED    : monitoring bo'lim qabul qilib yopadi
         # APPROVED  → RETURNED  : monitoring bo'lim rad etadi → ijrochiga qaytadi
         # SUBMITTED → RETURNED  : target bo'lim boshlig'i rad etadi → ijrochiga qaytadi
-        Status.CREATED:     [Status.ACCEPTED, Status.RETURNED],
+        Status.CREATED:     [Status.ACCEPTED],
         Status.ACCEPTED:    [Status.IN_PROGRESS, Status.RETURNED],
         Status.IN_PROGRESS: [Status.SUBMITTED, Status.RETURNED],
         Status.SUBMITTED:   [Status.APPROVED, Status.RETURNED],
