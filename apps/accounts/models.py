@@ -112,6 +112,17 @@ class UserRoleAssignment(models.Model):
         null=True, blank=True,
         related_name="role_assignments",
     )
+    # ── Yangi maydonlar (moslashuvchan rol tizimi) ───────────────
+    # Admin o'zi kiritadigan lavozim nomi (masalan "Rektor", "Filial direktori")
+    custom_role_name = models.CharField(max_length=100, blank=True, default="")
+    # Foydalanuvchiga topshiriq yaratish huquqi
+    can_create_tasks = models.BooleanField(default=False)
+    # Shu bo'lim/kafedradagi boshliqmi yoki xodimmi
+    is_head = models.BooleanField(default=False)
+    # Rahbarlik darajasi
+    is_branch_leader = models.BooleanField(default=False)    # filial rahbari
+    is_institute_leader = models.BooleanField(default=False) # institut/tashkilot rahbari
+
     is_active = models.BooleanField(default=True)
     assigned_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="assigned_roles"
@@ -121,7 +132,8 @@ class UserRoleAssignment(models.Model):
     class Meta:
         verbose_name = "Rol biriktiruvi"
         verbose_name_plural = "Rol biriktiruvilari"
-        unique_together = ["user", "role", "organization", "department", "chair"]
+        # unique_together olib tashlandi — moslashuvchan rol tizimi
 
     def __str__(self):
-        return f"{self.user.email} — {self.get_role_display()}"
+        name = self.custom_role_name or self.get_role_display()
+        return f"{self.user.email} — {name}"

@@ -58,22 +58,32 @@ class UserListSerializer(serializers.ModelSerializer):
 
 
 class RoleAssignmentSerializer(serializers.ModelSerializer):
-    role_display = serializers.CharField(source="get_role_display", read_only=True)
+    role_display      = serializers.CharField(source="get_role_display", read_only=True)
     organization_name = serializers.CharField(source="organization.name", read_only=True)
-    department_name = serializers.CharField(source="department.name", read_only=True)
-    department_type = serializers.CharField(source="department.dept_type", read_only=True)
-    can_create_tasks = serializers.BooleanField(source="department.can_create_tasks", read_only=True)
-    chair_name = serializers.CharField(source="chair.name", read_only=True)
+    department_name   = serializers.CharField(source="department.name",   read_only=True)
+    department_type   = serializers.CharField(source="department.dept_type", read_only=True)
+    chair_name        = serializers.CharField(source="chair.name",        read_only=True)
+    # can_create_tasks: assignment darajasi YOKI bo'lim darajasi
+    can_create_tasks  = serializers.SerializerMethodField()
 
     class Meta:
         model = UserRoleAssignment
         fields = [
-            "id", "role", "role_display",
+            "id", "role", "role_display", "custom_role_name",
             "organization", "organization_name",
             "department", "department_name", "department_type", "can_create_tasks",
             "chair", "chair_name",
+            "is_head", "is_branch_leader", "is_institute_leader",
             "is_active", "assigned_at",
         ]
+
+    def get_can_create_tasks(self, obj):
+        # Assignment darajasi ustunlik qiladi, keyin bo'lim darajasi
+        if obj.can_create_tasks:
+            return True
+        if obj.department and obj.department.can_create_tasks:
+            return True
+        return False
 
 
 class UserBasicSerializer(serializers.ModelSerializer):
@@ -102,22 +112,28 @@ class UserBasicSerializer(serializers.ModelSerializer):
             .filter(is_active=True)
             .first()
         )
-        return assignment.get_role_display() if assignment else None
+        if not assignment:
+            return None
+        # Qo'lda kiritilgan lavozim nomi ustunlik qiladi
+        return assignment.custom_role_name or assignment.get_role_display()
 
 
 class AssignRoleSerializer(serializers.ModelSerializer):
+    # role ixtiyoriy — default EMPLOYEE (backend compat uchun)
+    role = serializers.ChoiceField(
+        choices=UserRoleAssignment.Role.choices,
+        default=UserRoleAssignment.Role.EMPLOYEE,
+        required=False,
+    )
+
     class Meta:
         model = UserRoleAssignment
-        fields = ["role", "organization", "department", "chair"]
+        fields = [
+            "role", "organization", "department", "chair",
+            "custom_role_name", "can_create_tasks", "is_head",
+            "is_branch_leader", "is_institute_leader",
+        ]
 
     def validate(self, attrs):
-        role = attrs.get("role")
-        if role == UserRoleAssignment.Role.TASK_CONTROLLER and not attrs.get("department"):
-            raise serializers.ValidationError(
-                {"department": "TASK_CONTROLLER uchun bo'lim ko'rsatilishi shart"}
-            )
-        if role == UserRoleAssignment.Role.DEPT_HEAD and not attrs.get("department"):
-            raise serializers.ValidationError(
-                {"department": "Bo'lim boshlig'i uchun bo'lim ko'rsatilishi shart"}
-            )
+        # Bo'lim/kafedra endi ixtiyoriy — hech qanday majburiy tekshiruv yo'q
         return attrs
