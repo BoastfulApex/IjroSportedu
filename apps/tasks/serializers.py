@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory
+from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem
 from apps.accounts.serializers import UserListSerializer
 
 ACTIVE_STATUSES = {
@@ -239,3 +239,59 @@ class TaskStatusUpdateSerializer(serializers.Serializer):
                 f"'{task.get_status_display()}' dan '{Task.Status(value).label}' ga o'tish mumkin emas"
             )
         return value
+
+
+# ── Majlis serializers ──────────────────────────────────────────────────────
+
+class MeetingAgendaItemSerializer(serializers.ModelSerializer):
+    task_id     = serializers.IntegerField(source="task.id",     read_only=True)
+    task_status = serializers.CharField(source="task.status",   read_only=True)
+    task_title  = serializers.CharField(source="task.title",    read_only=True)
+    is_created  = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = MeetingAgendaItem
+        fields = ["id", "band_number", "content", "task_id", "task_title", "task_status", "is_created"]
+
+    def get_is_created(self, obj):
+        return obj.task_id is not None
+
+
+class MeetingSerializer(serializers.ModelSerializer):
+    items              = MeetingAgendaItemSerializer(many=True, read_only=True)
+    created_by_name    = serializers.CharField(source="created_by.full_name", read_only=True)
+    meeting_type_label = serializers.CharField(source="get_meeting_type_display", read_only=True)
+    items_count        = serializers.IntegerField(source="items.count", read_only=True)
+    created_count      = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Meeting
+        fields = [
+            "id", "name", "meeting_type", "meeting_type_label",
+            "date", "is_confirmed",
+            "created_by", "created_by_name",
+            "created_at", "items_count", "created_count", "items",
+        ]
+        read_only_fields = ["created_by", "is_confirmed", "created_at"]
+
+    def get_created_count(self, obj):
+        return obj.items.filter(task__isnull=False).count()
+
+
+class MeetingListSerializer(serializers.ModelSerializer):
+    """Ro'yxat uchun — items yuklamas"""
+    created_by_name    = serializers.CharField(source="created_by.full_name", read_only=True)
+    meeting_type_label = serializers.CharField(source="get_meeting_type_display", read_only=True)
+    items_count        = serializers.IntegerField(source="items.count", read_only=True)
+    created_count      = serializers.SerializerMethodField()
+
+    class Meta:
+        model  = Meeting
+        fields = [
+            "id", "name", "meeting_type", "meeting_type_label",
+            "date", "is_confirmed",
+            "created_by_name", "created_at", "items_count", "created_count",
+        ]
+
+    def get_created_count(self, obj):
+        return obj.items.filter(task__isnull=False).count()

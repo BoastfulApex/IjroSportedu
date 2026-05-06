@@ -196,6 +196,56 @@ class TaskAssignee(models.Model):
         return f"{self.task.title} → {self.user.full_name}"
 
 
+class Meeting(models.Model):
+    """Majlis (Rektorat yig'ilishi, Ilmiy kengash va h.k.) — topshiriqlar manbai."""
+
+    class MeetingType(models.TextChoices):
+        REKTORAT = "REKTORAT", "Rektorat"
+        ILMIY    = "ILMIY",    "Ilmiy kengash"
+
+    name         = models.CharField(max_length=300, verbose_name="Majlis nomi")
+    meeting_type = models.CharField(max_length=20, choices=MeetingType.choices, verbose_name="Majlis turi")
+    date         = models.DateField(verbose_name="Sana")
+    created_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True,
+        related_name="created_meetings",
+    )
+    created_at   = models.DateTimeField(auto_now_add=True)
+    is_confirmed = models.BooleanField(default=False, verbose_name="Topshiriqlar yaratilganmi")
+
+    class Meta:
+        verbose_name = "Majlis"
+        verbose_name_plural = "Majlislar"
+        ordering = ["-date", "-created_at"]
+
+    def __str__(self):
+        return f"{self.get_meeting_type_display()} — {self.name} ({self.date})"
+
+
+class MeetingAgendaItem(models.Model):
+    """Majlis kundaligidagi har bir band — Excel'dan yuklanadi."""
+
+    meeting     = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name="items")
+    band_number = models.PositiveIntegerField(verbose_name="Band raqami")
+    content     = models.TextField(verbose_name="Topshiriq mazmuni")
+    task        = models.OneToOneField(
+        Task, on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="meeting_item",
+        verbose_name="Yaratilgan topshiriq",
+    )
+
+    class Meta:
+        verbose_name = "Majlis bandi"
+        verbose_name_plural = "Majlis bandlari"
+        ordering = ["band_number"]
+        unique_together = [["meeting", "band_number"]]
+
+    def __str__(self):
+        return f"{self.meeting} — Band {self.band_number}"
+
+
 def task_attachment_path(instance, filename):
     return f"task_attachments/{instance.task.id}/{filename}"
 
