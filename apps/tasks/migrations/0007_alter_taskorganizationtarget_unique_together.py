@@ -10,35 +10,8 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
-        migrations.SeparateDatabaseAndState(
-            # Django ichki state'ini yangilaydi
-            state_operations=[
-                migrations.AlterUniqueTogether(
-                    name='taskorganizationtarget',
-                    unique_together=set(),
-                ),
-            ],
-            # DB'da: cheklov bor bo'lsa o'chiradi, yo'q bo'lsa xato bermaydi
-            database_operations=[
-                migrations.RunSQL(
-                    sql="""
-                        DO $$
-                        DECLARE
-                            r RECORD;
-                        BEGIN
-                            FOR r IN
-                                SELECT conname
-                                FROM pg_constraint
-                                WHERE conrelid = 'tasks_taskorganizationtarget'::regclass
-                                  AND contype = 'u'
-                            LOOP
-                                EXECUTE 'ALTER TABLE tasks_taskorganizationtarget DROP CONSTRAINT ' || quote_ident(r.conname);
-                            END LOOP;
-                        EXCEPTION WHEN OTHERS THEN NULL;
-                        END $$;
-                    """,
-                    reverse_sql=migrations.RunSQL.noop,
-                ),
-            ],
+        migrations.AlterUniqueTogether(
+            name='taskorganizationtarget',
+            unique_together=set(),
         ),
     ]
