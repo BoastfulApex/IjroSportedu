@@ -308,7 +308,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
     Excel yuklab, har bir band uchun ijrochi va muddat belgilab, tasdiqlanganda
     haqiqiy Task ob'ektlari yaratiladi.
     """
-    permission_classes = [IsAuthenticated, IsTaskController]
+    permission_classes = [IsAuthenticated, CanCreateTask]
     parser_classes     = [MultiPartParser, FormParser, JSONParser]
 
     def get_queryset(self):
@@ -482,7 +482,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
             # Task yaratish
             task = Task.objects.create(
-                title=f"{meeting.name} — {item.band_number}-band: {item.content[:200]}",
+                title=f"{meeting.name} — {item.band_number}-band",
                 description=item.content,
                 priority=priority,
                 task_type=task_type,
@@ -491,6 +491,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 target_organization=target_org,
                 target_department_id=target_dept_id,
                 deadline=parsed_deadline,
+                meeting=meeting,
             )
 
             # Ijrochilar
@@ -549,3 +550,30 @@ class MeetingViewSet(viewsets.ModelViewSet):
             "errors":  errors,
             "is_confirmed": meeting.is_confirmed,
         })
+
+    @action(detail=True, methods=["post"], url_path="upload-file",
+            parser_classes=[MultiPartParser, FormParser])
+    def upload_file(self, request, pk=None):
+        """Majlisga umumiy fayl biriktirish."""
+        meeting = self.get_object()
+        file = request.FILES.get("file")
+        if not file:
+            return Response({"detail": "Fayl tanlanmagan"}, status=400)
+        if meeting.file:
+            meeting.file.delete(save=False)
+        meeting.file = file
+        meeting.save(update_fields=["file"])
+        return Response(MeetingSerializer(meeting, context={"request": request}).data)
+
+    @action(detail=True, methods=["delete"], url_path=r"items/(?P<item_id>\d+)")
+    def remove_item(self, request, pk=None, item_id=None):
+        """Band itemni o'chirish (faqat topshiriq yaratilmagan bo'lsa)."""
+        meeting = self.get_object()
+        item = get_object_or_404(MeetingAgendaItem, id=item_id, meeting=meeting)
+        if item.task_id:
+            return Response(
+                {"detail": "Bu band allaqachon topshiriqqa aylangan, o'chirib bo'lmaydi"},
+                status=400,
+            )
+        item.delete()
+        return Response(status=204)

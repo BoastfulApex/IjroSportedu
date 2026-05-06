@@ -88,6 +88,13 @@ class Task(models.Model):
     )
     deadline = models.DateTimeField(null=True, blank=True, db_index=True)
     is_overdue = models.BooleanField(default=False, db_index=True)
+    meeting = models.ForeignKey(
+        "Meeting",
+        on_delete=models.CASCADE,
+        null=True, blank=True,
+        related_name="tasks",
+        verbose_name="Majlis",
+    )
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -210,6 +217,11 @@ class Meeting(models.Model):
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL, null=True,
         related_name="created_meetings",
+    )
+    file         = models.FileField(
+        upload_to="meetings/files/",
+        blank=True, null=True,
+        verbose_name="Umumiy fayl",
     )
     created_at   = models.DateTimeField(auto_now_add=True)
     is_confirmed = models.BooleanField(default=False, verbose_name="Topshiriqlar yaratilganmi")

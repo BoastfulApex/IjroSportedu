@@ -156,6 +156,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     status_display    = serializers.CharField(source="get_status_display",    read_only=True)
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
     is_overdue        = serializers.SerializerMethodField()
+    meeting_info      = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -168,7 +169,24 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             "target_department", "target_department_name",
             "deadline", "is_overdue", "created_at", "updated_at",
             "assignees", "attachments", "org_targets", "comments_count",
+            "meeting_info",
         ]
+
+    def get_meeting_info(self, obj):
+        if not obj.meeting_id:
+            return None
+        m = obj.meeting
+        request = self.context.get("request")
+        file_url = None
+        if m.file:
+            file_url = request.build_absolute_uri(m.file.url) if request else m.file.url
+        return {
+            "id":         m.id,
+            "name":       m.name,
+            "date":       str(m.date),
+            "type_label": m.get_meeting_type_display(),
+            "file_url":   file_url,
+        }
 
     def get_comments_count(self, obj):
         return obj.comments.count()
@@ -244,17 +262,36 @@ class TaskStatusUpdateSerializer(serializers.Serializer):
 # ── Majlis serializers ──────────────────────────────────────────────────────
 
 class MeetingAgendaItemSerializer(serializers.ModelSerializer):
-    task_id     = serializers.IntegerField(source="task.id",     read_only=True)
-    task_status = serializers.CharField(source="task.status",   read_only=True)
-    task_title  = serializers.CharField(source="task.title",    read_only=True)
-    is_created  = serializers.SerializerMethodField()
+    task_id       = serializers.IntegerField(source="task.id",       read_only=True)
+    task_status   = serializers.CharField(source="task.status",      read_only=True)
+    task_title    = serializers.CharField(source="task.title",       read_only=True)
+    task_deadline = serializers.DateTimeField(source="task.deadline", read_only=True)
+    task_priority = serializers.CharField(source="task.priority",    read_only=True)
+    task_assignees = serializers.SerializerMethodField()
+    is_created     = serializers.SerializerMethodField()
 
     class Meta:
         model  = MeetingAgendaItem
-        fields = ["id", "band_number", "content", "task_id", "task_title", "task_status", "is_created"]
+        fields = [
+            "id", "band_number", "content",
+            "task_id", "task_title", "task_status", "task_deadline", "task_priority",
+            "task_assignees", "is_created",
+        ]
 
     def get_is_created(self, obj):
         return obj.task_id is not None
+
+    def get_task_assignees(self, obj):
+        if not obj.task_id:
+            return []
+        return [
+            {
+                "user_id":       a.user_id,
+                "full_name":     a.user.full_name,
+                "is_primary":    a.is_primary,
+            }
+            for a in obj.task.assignees.select_related("user").all()
+        ]
 
 
 class MeetingSerializer(serializers.ModelSerializer):
@@ -263,6 +300,7 @@ class MeetingSerializer(serializers.ModelSerializer):
     meeting_type_label = serializers.CharField(source="get_meeting_type_display", read_only=True)
     items_count        = serializers.IntegerField(source="items.count", read_only=True)
     created_count      = serializers.SerializerMethodField()
+    file_url           = serializers.SerializerMethodField()
 
     class Meta:
         model  = Meeting
@@ -271,8 +309,15 @@ class MeetingSerializer(serializers.ModelSerializer):
             "date", "is_confirmed",
             "created_by", "created_by_name",
             "created_at", "items_count", "created_count", "items",
+            "file_url",
         ]
         read_only_fields = ["created_by", "is_confirmed", "created_at"]
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.file.url) if request else obj.file.url
 
     def get_created_count(self, obj):
         return obj.items.filter(task__isnull=False).count()
@@ -284,6 +329,7 @@ class MeetingListSerializer(serializers.ModelSerializer):
     meeting_type_label = serializers.CharField(source="get_meeting_type_display", read_only=True)
     items_count        = serializers.IntegerField(source="items.count", read_only=True)
     created_count      = serializers.SerializerMethodField()
+    file_url           = serializers.SerializerMethodField()
 
     class Meta:
         model  = Meeting
@@ -291,7 +337,14 @@ class MeetingListSerializer(serializers.ModelSerializer):
             "id", "name", "meeting_type", "meeting_type_label",
             "date", "is_confirmed",
             "created_by_name", "created_at", "items_count", "created_count",
+            "file_url",
         ]
 
     def get_created_count(self, obj):
         return obj.items.filter(task__isnull=False).count()
+
+    def get_file_url(self, obj):
+        if not obj.file:
+            return None
+        request = self.context.get("request")
+        return request.build_absolute_uri(obj.file.url) if request else obj.file.url

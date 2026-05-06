@@ -9,6 +9,6 @@ meeting_router = DefaultRouter()
 meeting_router.register("", MeetingViewSet, basename="meetings")
 
 urlpatterns = [
+    path("meetings/", include(meeting_router.urls)),  # avval — task pk bilan aralashmasin
     path("", include(router.urls)),
-    path("meetings/", include(meeting_router.urls)),
 ]

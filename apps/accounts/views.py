@@ -114,8 +114,10 @@ class PublicUserSearchView(generics.ListAPIView):
         org_param    = params.get("organization", "").strip()
         role_param   = params.get("role", "").strip()
 
-        # Kamida bitta filter bo'lishi kerak
-        if not depts_param and not chairs_param and not org_param and not role_param:
+        search_param = params.get("search", "").strip()
+
+        # Kamida bitta filter bo'lishi kerak (search yolg'iz bo'lsa ham qabul)
+        if not depts_param and not chairs_param and not org_param and not role_param and not search_param:
             return qs.none()
 
         # Kafedralar bo'yicha filterlash (kafedra mudiri va xodimlari)
@@ -154,13 +156,12 @@ class PublicUserSearchView(generics.ListAPIView):
                     role_assignments__is_active=True,
                 ).distinct()
 
-        # Qidiruv
-        search = params.get("search", "").strip()
-        if search:
+        # Qidiruv (ism, familiya, email bo'yicha)
+        if search_param:
             qs = qs.filter(
-                Q(first_name__icontains=search)
-                | Q(last_name__icontains=search)
-                | Q(email__icontains=search)
+                Q(first_name__icontains=search_param)
+                | Q(last_name__icontains=search_param)
+                | Q(email__icontains=search_param)
             )
 
         return qs.prefetch_related(
