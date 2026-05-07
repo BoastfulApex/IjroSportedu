@@ -8,13 +8,29 @@ from django.db.models import Q
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
-from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem
+from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem, RecurringMeetingItem
 from .serializers import (
     TaskListSerializer, TaskDetailSerializer, TaskCreateSerializer,
     TaskStatusUpdateSerializer, TaskAssigneeSerializer,
     TaskAttachmentSerializer, TaskCommentSerializer, TaskHistorySerializer,
     MeetingSerializer, MeetingListSerializer, MeetingAgendaItemSerializer,
+    RecurringMeetingItemSerializer,
 )
+
+
+def get_next_saturday_15():
+    """Bu hafta yoki keyingi shanba kuni soat 15:00 (aware datetime)."""
+    from datetime import timedelta
+    from django.utils import timezone as tz
+    now = tz.now()
+    # weekday(): 0=Dushanba … 5=Shanba, 6=Yakshanba
+    days_until_sat = (5 - now.weekday()) % 7
+    if days_until_sat == 0:
+        days_until_sat = 7  # agar bugun shanba bo'lsa → keyingi shanba
+    saturday = (now + timedelta(days=days_until_sat)).replace(
+        hour=15, minute=0, second=0, microsecond=0
+    )
+    return saturday
 from apps.accounts.permissions import IsTaskController, CanCreateTask, IsTaskRelated
 from apps.accounts.models import User
 
@@ -369,7 +385,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
         if not items_data:
             return Response({"detail": "Excel faylda ma'lumot topilmadi"}, status=400)
 
-        # Avvalgi bandlarni o'chirib, yangisini yozamiz
+        # Avvalgi topshiriqsiz bandlarni o'chirib, yangisini yozamiz
         meeting.items.filter(task__isnull=True).delete()
 
         created = []
@@ -380,6 +396,30 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 defaults={"content": item["content"]},
             )
             created.append(obj)
+
+        # ── Doimiy bandlarni qo'shish ──────────────────────────────
+        from django.utils import timezone as tz
+        current_year = tz.now().year
+        recurring_qs = RecurringMeetingItem.objects.filter(
+            meeting_type=meeting.meeting_type,
+            valid_year=current_year,
+            is_active=True,
+        )
+        if recurring_qs.exists():
+            max_band = max((i["band_number"] for i in items_data), default=0)
+            for i, rec in enumerate(recurring_qs, start=1):
+                # Allaqachon bu majlisda bor bo'lsa — qo'shmaymiz
+                already = MeetingAgendaItem.objects.filter(
+                    meeting=meeting, recurring_item=rec
+                ).exists()
+                if not already:
+                    rec_item = MeetingAgendaItem.objects.create(
+                        meeting=meeting,
+                        band_number=max_band + i,
+                        content=rec.content,
+                        recurring_item=rec,
+                    )
+                    created.append(rec_item)
 
         return Response(MeetingAgendaItemSerializer(created, many=True).data)
 
@@ -567,7 +607,10 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["delete"], url_path=r"items/(?P<item_id>\d+)")
     def remove_item(self, request, pk=None, item_id=None):
-        """Band itemni o'chirish (faqat topshiriq yaratilmagan bo'lsa)."""
+        """Band itemni o'chirish.
+        - Doimiy band bo'lsa → faqat bu majlisdan olib tashlanadi (RecurringMeetingItem saqlanadi)
+        - Oddiy band bo'lsa → butunlay o'chiriladi
+        """
         meeting = self.get_object()
         item = get_object_or_404(MeetingAgendaItem, id=item_id, meeting=meeting)
         if item.task_id:
@@ -575,5 +618,77 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 {"detail": "Bu band allaqachon topshiriqqa aylangan, o'chirib bo'lmaydi"},
                 status=400,
             )
-        item.delete()
+        item.delete()  # recurring_item FK SET_NULL → RecurringMeetingItem saqlanadi
         return Response(status=204)
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/set-recurring")
+    def set_recurring(self, request, pk=None, item_id=None):
+        """Bandni doimiy deb belgilash — RecurringMeetingItem yaratiladi."""
+        meeting = self.get_object()
+        item = get_object_or_404(MeetingAgendaItem, id=item_id, meeting=meeting)
+
+        if item.recurring_item_id:
+            return Response({"detail": "Bu band allaqachon doimiy deb belgilangan"}, status=400)
+
+        from django.utils import timezone as tz
+        year = tz.now().year
+
+        recurring = RecurringMeetingItem.objects.create(
+            content=item.content,
+            meeting_type=meeting.meeting_type,
+            valid_year=year,
+            created_by=request.user,
+            is_active=True,
+        )
+        item.recurring_item = recurring
+        item.save(update_fields=["recurring_item"])
+
+        return Response(MeetingAgendaItemSerializer(item).data)
+
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/unset-recurring")
+    def unset_recurring(self, request, pk=None, item_id=None):
+        """Doimiy bandni o'chirib qo'yish (is_active=False)."""
+        meeting = self.get_object()
+        item = get_object_or_404(MeetingAgendaItem, id=item_id, meeting=meeting)
+
+        if not item.recurring_item_id:
+            return Response({"detail": "Bu band doimiy emas"}, status=400)
+
+        recurring = item.recurring_item
+        recurring.is_active = False
+        recurring.save(update_fields=["is_active"])
+        item.recurring_item = None
+        item.save(update_fields=["recurring_item"])
+
+        return Response(MeetingAgendaItemSerializer(item).data)
+
+
+# ── Doimiy bandlar ViewSet ──────────────────────────────────────────────────
+
+class RecurringMeetingItemViewSet(viewsets.ModelViewSet):
+    """
+    Doimiy bandlar ro'yxati.
+    GET    /tasks/recurring/                        — faol doimiy bandlar
+    GET    /tasks/recurring/?meeting_type=REKTORAT&year=2026
+    DELETE /tasks/recurring/{id}/                   — doimiy bandni o'chirish
+    """
+    permission_classes = [IsAuthenticated, CanCreateTask]
+    serializer_class   = RecurringMeetingItemSerializer
+    http_method_names  = ["get", "delete", "head", "options"]
+
+    def get_queryset(self):
+        from django.utils import timezone as tz
+        qs = RecurringMeetingItem.objects.filter(is_active=True)
+        meeting_type = self.request.query_params.get("meeting_type")
+        year = self.request.query_params.get("year", tz.now().year)
+        if meeting_type:
+            qs = qs.filter(meeting_type=meeting_type)
+        qs = qs.filter(valid_year=int(year))
+        return qs.select_related("created_by")
+
+    def destroy(self, request, *args, **kwargs):
+        """O'chirish — is_active=False qiladi (bazadan o'chmaydi)."""
+        instance = self.get_object()
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
+        return Response(status=status.HTTP_204_NO_CONTENT)

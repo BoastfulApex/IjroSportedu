@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem
+from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem, RecurringMeetingItem
 from apps.accounts.serializers import UserListSerializer
 
 ACTIVE_STATUSES = {
@@ -261,14 +261,29 @@ class TaskStatusUpdateSerializer(serializers.Serializer):
 
 # ── Majlis serializers ──────────────────────────────────────────────────────
 
+class RecurringMeetingItemSerializer(serializers.ModelSerializer):
+    meeting_type_label = serializers.CharField(source="get_meeting_type_display", read_only=True)
+    created_by_name    = serializers.CharField(source="created_by.full_name", read_only=True)
+
+    class Meta:
+        model  = RecurringMeetingItem
+        fields = [
+            "id", "content", "meeting_type", "meeting_type_label",
+            "valid_year", "is_active", "created_by_name", "created_at",
+        ]
+        read_only_fields = ["created_by_name", "created_at"]
+
+
 class MeetingAgendaItemSerializer(serializers.ModelSerializer):
-    task_id       = serializers.IntegerField(source="task.id",       read_only=True)
-    task_status   = serializers.CharField(source="task.status",      read_only=True)
-    task_title    = serializers.CharField(source="task.title",       read_only=True)
-    task_deadline = serializers.DateTimeField(source="task.deadline", read_only=True)
-    task_priority = serializers.CharField(source="task.priority",    read_only=True)
-    task_assignees = serializers.SerializerMethodField()
-    is_created     = serializers.SerializerMethodField()
+    task_id           = serializers.IntegerField(source="task.id",       read_only=True)
+    task_status       = serializers.CharField(source="task.status",      read_only=True)
+    task_title        = serializers.CharField(source="task.title",       read_only=True)
+    task_deadline     = serializers.DateTimeField(source="task.deadline", read_only=True)
+    task_priority     = serializers.CharField(source="task.priority",    read_only=True)
+    task_assignees    = serializers.SerializerMethodField()
+    is_created        = serializers.SerializerMethodField()
+    is_recurring      = serializers.SerializerMethodField()
+    recurring_item_id = serializers.IntegerField(source="recurring_item.id", read_only=True)
 
     class Meta:
         model  = MeetingAgendaItem
@@ -276,19 +291,23 @@ class MeetingAgendaItemSerializer(serializers.ModelSerializer):
             "id", "band_number", "content",
             "task_id", "task_title", "task_status", "task_deadline", "task_priority",
             "task_assignees", "is_created",
+            "is_recurring", "recurring_item_id",
         ]
 
     def get_is_created(self, obj):
         return obj.task_id is not None
+
+    def get_is_recurring(self, obj):
+        return obj.recurring_item_id is not None
 
     def get_task_assignees(self, obj):
         if not obj.task_id:
             return []
         return [
             {
-                "user_id":       a.user_id,
-                "full_name":     a.user.full_name,
-                "is_primary":    a.is_primary,
+                "user_id":    a.user_id,
+                "full_name":  a.user.full_name,
+                "is_primary": a.is_primary,
             }
             for a in obj.task.assignees.select_related("user").all()
         ]

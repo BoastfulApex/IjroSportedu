@@ -235,17 +235,52 @@ class Meeting(models.Model):
         return f"{self.get_meeting_type_display()} — {self.name} ({self.date})"
 
 
+class RecurringMeetingItem(models.Model):
+    """Har bir majlisda takrorlanadigan doimiy band."""
+
+    content      = models.TextField(verbose_name="Topshiriq mazmuni")
+    meeting_type = models.CharField(
+        max_length=20,
+        choices=Meeting.MeetingType.choices,
+        verbose_name="Majlis turi",
+        db_index=True,
+    )
+    valid_year   = models.IntegerField(verbose_name="Amal qilish yili", db_index=True)
+    created_by   = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL, null=True,
+        related_name="created_recurring_items",
+    )
+    created_at   = models.DateTimeField(auto_now_add=True)
+    is_active    = models.BooleanField(default=True, verbose_name="Faol", db_index=True)
+
+    class Meta:
+        verbose_name = "Doimiy band"
+        verbose_name_plural = "Doimiy bandlar"
+        ordering = ["created_at"]
+
+    def __str__(self):
+        return f"{self.get_meeting_type_display()} ({self.valid_year}) — {self.content[:60]}"
+
+
 class MeetingAgendaItem(models.Model):
     """Majlis kundaligidagi har bir band — Excel'dan yuklanadi."""
 
-    meeting     = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name="items")
-    band_number = models.PositiveIntegerField(verbose_name="Band raqami")
-    content     = models.TextField(verbose_name="Topshiriq mazmuni")
-    task        = models.OneToOneField(
+    meeting        = models.ForeignKey(Meeting, on_delete=models.CASCADE, related_name="items")
+    band_number    = models.PositiveIntegerField(verbose_name="Band raqami")
+    content        = models.TextField(verbose_name="Topshiriq mazmuni")
+    task           = models.OneToOneField(
         Task, on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name="meeting_item",
         verbose_name="Yaratilgan topshiriq",
+    )
+    recurring_item = models.ForeignKey(
+        RecurringMeetingItem,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="agenda_items",
+        verbose_name="Doimiy band manbasi",
     )
 
     class Meta:
