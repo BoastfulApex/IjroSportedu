@@ -50,7 +50,8 @@ class CanCreateTask(BasePermission):
             user=request.user,
             is_active=True,
         ).filter(
-            models.Q(department__can_create_tasks=True)
+            models.Q(can_create_tasks=True)
+            | models.Q(department__can_create_tasks=True)
             | models.Q(department__dept_type="TASK_CONTROL")
         ).exists()
 

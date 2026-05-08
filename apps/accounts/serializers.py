@@ -98,24 +98,26 @@ class UserBasicSerializer(serializers.ModelSerializer):
                   "department_name", "role_display"]
 
     def get_department_name(self, obj):
-        assignment = (
+        assignments = (
             obj.role_assignments
             .filter(is_active=True, department__isnull=False)
             .select_related("department")
-            .first()
         )
-        return assignment.department.name if assignment else None
+        names = [a.department.name for a in assignments if a.department]
+        return ", ".join(names) if names else None
 
     def get_role_display(self, obj):
-        assignment = (
+        assignments = (
             obj.role_assignments
             .filter(is_active=True)
-            .first()
         )
-        if not assignment:
+        labels = [
+            a.custom_role_name or a.get_role_display()
+            for a in assignments
+        ]
+        if not labels:
             return None
-        # Qo'lda kiritilgan lavozim nomi ustunlik qiladi
-        return assignment.custom_role_name or assignment.get_role_display()
+        return ", ".join(labels)
 
 
 class AssignRoleSerializer(serializers.ModelSerializer):
