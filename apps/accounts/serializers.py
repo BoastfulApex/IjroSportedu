@@ -22,14 +22,21 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 
 class UserProfileSerializer(serializers.ModelSerializer):
-    full_name = serializers.CharField(read_only=True)
-    roles = serializers.SerializerMethodField()
-    is_staff = serializers.BooleanField(read_only=True)
+    full_name    = serializers.CharField(read_only=True)
+    roles        = serializers.SerializerMethodField()
+    is_staff     = serializers.BooleanField(read_only=True)
+    has_password = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ["id", "email", "first_name", "last_name", "phone", "full_name", "is_staff", "date_joined", "roles"]
-        read_only_fields = ["id", "email", "date_joined", "is_staff"]
+        fields = [
+            "id", "email", "first_name", "last_name", "phone",
+            "full_name", "is_staff", "date_joined", "roles", "has_password",
+        ]
+        read_only_fields = ["id", "email", "date_joined", "is_staff", "has_password"]
+
+    def get_has_password(self, obj):
+        return obj.has_usable_password()
 
     def get_roles(self, obj):
         return RoleAssignmentSerializer(

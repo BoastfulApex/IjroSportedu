@@ -195,6 +195,38 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
+class SetPasswordView(APIView):
+    """
+    Foydalanuvchi o'z parolini o'rnatadi yoki o'zgartiradi.
+    - Google orqali kirgan (parolsiz) foydalanuvchi: faqat new_password + confirm_password
+    - Parol mavjud foydalanuvchi: current_password + new_password + confirm_password
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        new_password     = request.data.get("new_password", "").strip()
+        confirm_password = request.data.get("confirm_password", "").strip()
+        current_password = request.data.get("current_password", "").strip()
+
+        if len(new_password) < 6:
+            return Response({"detail": "Parol kamida 6 ta belgidan iborat bo'lishi kerak"}, status=status.HTTP_400_BAD_REQUEST)
+
+        if new_password != confirm_password:
+            return Response({"detail": "Parollar mos kelmadi"}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Agar foydalanuvchi allaqachon parolga ega bo'lsa — eski parolini tekshiramiz
+        if user.has_usable_password():
+            if not current_password:
+                return Response({"detail": "Joriy parolni kiriting"}, status=status.HTTP_400_BAD_REQUEST)
+            if not user.check_password(current_password):
+                return Response({"detail": "Joriy parol noto'g'ri"}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save(update_fields=["password"])
+        return Response({"detail": "Parol muvaffaqiyatli o'rnatildi", "has_password": True})
+
+
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.prefetch_related(
         "role_assignments__organization",
