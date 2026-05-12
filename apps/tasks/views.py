@@ -159,6 +159,17 @@ class TaskViewSet(viewsets.ModelViewSet):
         new_status = serializer.validated_data["status"]
         comment_text = serializer.validated_data.get("comment", "")
 
+        # Hisobot topshirish — faqat ASOSIY ijrochi
+        if new_status == Task.Status.SUBMITTED:
+            is_primary = task.assignees.filter(
+                user=request.user, is_primary=True
+            ).exists()
+            if not is_primary:
+                return Response(
+                    {"detail": "Hisobot faqat asosiy ijrochi tomonidan topshirilishi mumkin"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         old_status = task.status
         task.status = new_status
         task._actor = request.user
