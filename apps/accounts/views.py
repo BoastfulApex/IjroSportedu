@@ -156,16 +156,20 @@ class PublicUserSearchView(generics.ListAPIView):
                     role_assignments__is_active=True,
                 ).distinct()
 
-        # Qidiruv (ism, familiya, email bo'yicha)
+        # Qidiruv (ism, familiya, email, lavozim bo'yicha)
         if search_param:
             qs = qs.filter(
                 Q(first_name__icontains=search_param)
                 | Q(last_name__icontains=search_param)
                 | Q(email__icontains=search_param)
-            )
+                | Q(role_assignments__custom_role_name__icontains=search_param,
+                    role_assignments__is_active=True)
+            ).distinct()
 
         return qs.prefetch_related(
-            "role_assignments__department"
+            "role_assignments__department",
+            "role_assignments__organization",
+            "role_assignments__chair",
         ).order_by("last_name", "first_name")
 
 
