@@ -165,29 +165,25 @@ class TaskViewSet(viewsets.ModelViewSet):
         new_status = serializer.validated_data["status"]
         comment_text = serializer.validated_data.get("comment", "")
 
-        # Bo'lim a'zosi qabul qilganda — avtomatik ijrochi sifatida qo'shamiz
-        active_statuses_for_dept = [
+        # Status o'zgartirish uchun ruxsat tekshiruvi:
+        # Rasmiy ijrochi YOKI target bo'lim a'zosi bo'lishi kerak
+        # (SUBMITTED — alohida tekshiruv pastda)
+        active_statuses_for_check = [
             Task.Status.ACCEPTED, Task.Status.IN_PROGRESS, Task.Status.RETURNED
         ]
-        if new_status in active_statuses_for_dept:
-            if not task.assignees.filter(user=request.user).exists():
+        if new_status in active_statuses_for_check:
+            is_assignee = task.assignees.filter(user=request.user).exists()
+            if not is_assignee:
                 user_dept_ids = list(
                     request.user.role_assignments.filter(is_active=True)
                     .exclude(department=None)
                     .values_list("department_id", flat=True)
                 )
-                if task.target_department_id and task.target_department_id in user_dept_ids:
-                    has_primary = task.assignees.filter(is_primary=True).exists()
-                    TaskAssignee.objects.create(
-                        task=task,
-                        user=request.user,
-                        assigned_by=request.user,
-                        organization_id=task.target_organization_id,
-                        department_id=task.target_department_id,
-                        is_primary=not has_primary,
-                        is_leader=False,
-                    )
-                else:
+                in_target_dept = (
+                    task.target_department_id and
+                    task.target_department_id in user_dept_ids
+                )
+                if not in_target_dept:
                     return Response(
                         {"detail": "Siz bu topshiriqning ijrochisi emassiz"},
                         status=status.HTTP_403_FORBIDDEN,
