@@ -59,9 +59,15 @@ class TaskViewSet(viewsets.ModelViewSet):
             "org_targets__chair",
         )
 
-        # ?my_tasks=true — faqat o'zi ijrochi sifatida biriktirilgan topshiriqlar
+        # ?my_tasks=true — o'zi ijrochi YOKI target_department xodimi bo'lgan topshiriqlar
         if self.request.query_params.get("my_tasks") == "true":
-            return qs.filter(assignees__user=user).distinct()
+            active_roles = user.role_assignments.filter(is_active=True)
+            my_dept_ids = list(
+                active_roles.exclude(department=None)
+                .values_list("department_id", flat=True)
+            )
+            dept_q = Q(target_department__in=my_dept_ids) if my_dept_ids else Q()
+            return qs.filter(Q(assignees__user=user) | dept_q).distinct()
 
         if user.is_super_admin() or user.is_task_controller():
             return qs
@@ -158,6 +164,34 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         new_status = serializer.validated_data["status"]
         comment_text = serializer.validated_data.get("comment", "")
+
+        # Bo'lim a'zosi qabul qilganda — avtomatik ijrochi sifatida qo'shamiz
+        active_statuses_for_dept = [
+            Task.Status.ACCEPTED, Task.Status.IN_PROGRESS, Task.Status.RETURNED
+        ]
+        if new_status in active_statuses_for_dept:
+            if not task.assignees.filter(user=request.user).exists():
+                user_dept_ids = list(
+                    request.user.role_assignments.filter(is_active=True)
+                    .exclude(department=None)
+                    .values_list("department_id", flat=True)
+                )
+                if task.target_department_id and task.target_department_id in user_dept_ids:
+                    has_primary = task.assignees.filter(is_primary=True).exists()
+                    TaskAssignee.objects.create(
+                        task=task,
+                        user=request.user,
+                        assigned_by=request.user,
+                        organization_id=task.target_organization_id,
+                        department_id=task.target_department_id,
+                        is_primary=not has_primary,
+                        is_leader=False,
+                    )
+                else:
+                    return Response(
+                        {"detail": "Siz bu topshiriqning ijrochisi emassiz"},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
         # Hisobot topshirish — faqat ASOSIY ijrochi
         if new_status == Task.Status.SUBMITTED:
