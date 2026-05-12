@@ -62,6 +62,11 @@ class GoogleAuthView(APIView):
                 },
             )
 
+            if created:
+                # Google orqali yaratilgan user — parol yo'q deb belgilaymiz
+                user.set_unusable_password()
+                user.save(update_fields=["password"])
+
             if not created:
                 changed = False
                 if first_name and not user.first_name:
@@ -215,8 +220,9 @@ class SetPasswordView(APIView):
         if new_password != confirm_password:
             return Response({"detail": "Parollar mos kelmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Agar foydalanuvchi allaqachon parolga ega bo'lsa — eski parolini tekshiramiz
-        if user.has_usable_password():
+        # Haqiqiy parol mavjudligini tekshirish (bo'sh satr yoki unusable = parol yo'q)
+        has_real_password = bool(user.password) and user.has_usable_password()
+        if has_real_password:
             if not current_password:
                 return Response({"detail": "Joriy parolni kiriting"}, status=status.HTTP_400_BAD_REQUEST)
             if not user.check_password(current_password):

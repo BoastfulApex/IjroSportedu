@@ -36,7 +36,8 @@ class UserProfileSerializer(serializers.ModelSerializer):
         read_only_fields = ["id", "email", "date_joined", "is_staff", "has_password"]
 
     def get_has_password(self, obj):
-        return obj.has_usable_password()
+        # Bo'sh satr ("") yoki unusable password ("!...") — ikkalasi ham False
+        return bool(obj.password) and obj.has_usable_password()
 
     def get_roles(self, obj):
         return RoleAssignmentSerializer(
