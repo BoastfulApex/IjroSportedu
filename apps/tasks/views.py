@@ -388,40 +388,45 @@ class MeetingViewSet(viewsets.ModelViewSet):
         # Avvalgi topshiriqsiz bandlarni o'chirib, yangisini yozamiz
         meeting.items.filter(task__isnull=True).delete()
 
-        created = []
-        for item in items_data:
-            obj, _ = MeetingAgendaItem.objects.get_or_create(
-                meeting=meeting,
-                band_number=item["band_number"],
-                defaults={"content": item["content"]},
-            )
-            created.append(obj)
-
-        # ── Doimiy bandlarni qo'shish ──────────────────────────────
         from django.utils import timezone as tz
         current_year = tz.now().year
+
+        # ── 1. Doimiy bandlarni AVVAL qo'shamiz ───────────────────
+        recurring_items = []
         recurring_qs = RecurringMeetingItem.objects.filter(
             meeting_type=meeting.meeting_type,
             valid_year=current_year,
             is_active=True,
         )
-        if recurring_qs.exists():
-            max_band = max((i["band_number"] for i in items_data), default=0)
-            for i, rec in enumerate(recurring_qs, start=1):
-                # Allaqachon bu majlisda bor bo'lsa — qo'shmaymiz
-                already = MeetingAgendaItem.objects.filter(
-                    meeting=meeting, recurring_item=rec
-                ).exists()
-                if not already:
-                    rec_item = MeetingAgendaItem.objects.create(
-                        meeting=meeting,
-                        band_number=max_band + i,
-                        content=rec.content,
-                        recurring_item=rec,
-                    )
-                    created.append(rec_item)
+        for i, rec in enumerate(recurring_qs, start=1):
+            already = MeetingAgendaItem.objects.filter(
+                meeting=meeting, recurring_item=rec
+            ).first()
+            if already:
+                recurring_items.append(already)
+            else:
+                rec_item = MeetingAgendaItem.objects.create(
+                    meeting=meeting,
+                    band_number=i,
+                    content=rec.content,
+                    recurring_item=rec,
+                )
+                recurring_items.append(rec_item)
 
-        return Response(MeetingAgendaItemSerializer(created, many=True).data)
+        # ── 2. Excel bandlarini unga qo'shamiz (offset bilan) ─────
+        offset = len(recurring_items)
+        excel_items = []
+        for item in items_data:
+            obj, _ = MeetingAgendaItem.objects.get_or_create(
+                meeting=meeting,
+                band_number=item["band_number"] + offset,
+                defaults={"content": item["content"]},
+            )
+            excel_items.append(obj)
+
+        # Doimiy bandlar TEPADA, Excel bandlar pastda
+        all_items = recurring_items + excel_items
+        return Response(MeetingAgendaItemSerializer(all_items, many=True).data)
 
     # ── Tasdiqlash: har bir band uchun task yaratish ───────────────
     @action(detail=True, methods=["post"], url_path="confirm")

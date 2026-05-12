@@ -284,6 +284,7 @@ class MeetingAgendaItemSerializer(serializers.ModelSerializer):
     is_created        = serializers.SerializerMethodField()
     is_recurring      = serializers.SerializerMethodField()
     recurring_item_id = serializers.IntegerField(source="recurring_item.id", read_only=True)
+    last_assignees    = serializers.SerializerMethodField()
 
     class Meta:
         model  = MeetingAgendaItem
@@ -292,6 +293,7 @@ class MeetingAgendaItemSerializer(serializers.ModelSerializer):
             "task_id", "task_title", "task_status", "task_deadline", "task_priority",
             "task_assignees", "is_created",
             "is_recurring", "recurring_item_id",
+            "last_assignees",
         ]
 
     def get_is_created(self, obj):
@@ -310,6 +312,32 @@ class MeetingAgendaItemSerializer(serializers.ModelSerializer):
                 "is_primary": a.is_primary,
             }
             for a in obj.task.assignees.select_related("user").all()
+        ]
+
+    def get_last_assignees(self, obj):
+        """Doimiy band uchun oldingi majlisda biriktirilgan ijrochilar."""
+        if not obj.recurring_item_id:
+            return []
+        last_item = (
+            MeetingAgendaItem.objects
+            .filter(recurring_item_id=obj.recurring_item_id, task__isnull=False)
+            .exclude(meeting_id=obj.meeting_id)
+            .order_by("-id")
+            .select_related("task")
+            .first()
+        )
+        if not last_item:
+            return []
+        return [
+            {
+                "user_id":      a.user_id,
+                "full_name":    a.user.full_name,
+                "is_primary":   a.is_primary,
+                "is_leader":    a.is_leader,
+                "organization": a.organization_id,
+                "department":   a.department_id,
+            }
+            for a in last_item.task.assignees.select_related("user").all()
         ]
 
 
