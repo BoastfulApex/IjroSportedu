@@ -217,6 +217,35 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         return Response(TaskDetailSerializer(task, context={"request": request}).data)
 
+    @action(detail=True, methods=["patch"], url_path="deadline")
+    def update_deadline(self, request, pk=None):
+        """Topshiriq muddatini o'zgartirish (faqat task yaratuvchi / canManage)."""
+        task = self.get_object()
+        deadline_str = request.data.get("deadline", "").strip()
+        if not deadline_str:
+            task.deadline = None
+            task._actor = request.user
+            task.save(update_fields=["deadline"])
+            return Response(TaskDetailSerializer(task, context={"request": request}).data)
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone as tz
+        deadline = parse_datetime(deadline_str)
+        if not deadline:
+            return Response({"detail": "Noto'g'ri sana formati"}, status=400)
+        if tz.is_naive(deadline):
+            deadline = tz.make_aware(deadline)
+        old_val = str(task.deadline) if task.deadline else ""
+        task.deadline = deadline
+        task._actor = request.user
+        task.save(update_fields=["deadline"])
+        TaskHistory.objects.create(
+            task=task, actor=request.user,
+            action="Muddat o'zgartirildi",
+            old_value=old_val,
+            new_value=str(deadline),
+        )
+        return Response(TaskDetailSerializer(task, context={"request": request}).data)
+
     @action(detail=True, methods=["post", "get"], url_path="assignees")
     def assignees(self, request, pk=None):
         task = self.get_object()
