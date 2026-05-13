@@ -11,6 +11,7 @@ urlpatterns = [
     path("api/tasks/", include("apps.tasks.urls")),
     path("api/reports/", include("apps.reports.urls")),
     path("api/notifications/", include("apps.notifications.urls")),
+    path("api/plans/", include("apps.plans.urls")),
 ]
 
 if settings.DEBUG:
