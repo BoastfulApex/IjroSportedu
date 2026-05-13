@@ -117,13 +117,28 @@ class WeeklyReportExtraImageSerializer(serializers.ModelSerializer):
 
 
 class WeeklyReportExtraSerializer(serializers.ModelSerializer):
-    images         = WeeklyReportExtraImageSerializer(many=True, read_only=True)
-    created_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
+    images              = WeeklyReportExtraImageSerializer(many=True, read_only=True)
+    created_by_name     = serializers.CharField(source="created_by.full_name", read_only=True)
+    work_plan_item_info = serializers.SerializerMethodField()
 
     class Meta:
         model = WeeklyReportExtra
-        fields = ["id", "content", "created_by_name", "created_at", "images"]
+        fields = [
+            "id", "content",
+            "work_plan_item", "work_plan_item_info",
+            "is_outside_plan",
+            "created_by_name", "created_at", "images",
+        ]
         read_only_fields = ["created_by", "created_at"]
+
+    def get_work_plan_item_info(self, obj):
+        if obj.work_plan_item:
+            return {
+                "id": obj.work_plan_item.id,
+                "order_number": obj.work_plan_item.order_number,
+                "content": obj.work_plan_item.content[:120],
+            }
+        return None
 
 
 class DailyReportBriefSerializer(serializers.ModelSerializer):

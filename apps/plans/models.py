@@ -142,15 +142,22 @@ class WeeklyReport(models.Model):
 
 class WeeklyReportExtra(models.Model):
     """Haftalik hisobotga qo'shimcha yozilgan band."""
-    weekly_report = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="extras")
-    content       = models.TextField()
-    created_by    = models.ForeignKey(
+    weekly_report  = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="extras")
+    content        = models.TextField()
+    work_plan_item = models.ForeignKey(
+        WorkPlanItem,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="weekly_extras",
+    )
+    is_outside_plan = models.BooleanField(default=False)
+    created_by     = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name="weekly_report_extras",
     )
-    created_at    = models.DateTimeField(auto_now_add=True)
+    created_at     = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ["created_at"]

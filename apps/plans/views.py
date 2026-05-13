@@ -315,13 +315,23 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
         if not content:
             return Response({"detail": "Mazmun kiritilishi shart"}, status=400)
 
+        is_outside = request.data.get("is_outside_plan", "false")
+        is_outside = is_outside in (True, "true", "True", "1")
+
+        work_plan_item = None
+        item_id = request.data.get("work_plan_item")
+        if item_id and not is_outside:
+            from django.shortcuts import get_object_or_404
+            work_plan_item = get_object_or_404(WorkPlanItem, id=item_id)
+
         extra = WeeklyReportExtra.objects.create(
             weekly_report=report,
             content=content,
+            work_plan_item=work_plan_item,
+            is_outside_plan=is_outside,
             created_by=request.user,
         )
 
-        # Rasmlar
         for img in request.FILES.getlist("images"):
             WeeklyReportExtraImage.objects.create(extra=extra, image=img)
 
