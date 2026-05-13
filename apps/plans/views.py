@@ -37,6 +37,7 @@ def can_view_all(user):
 
 class WorkPlanViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -168,6 +169,7 @@ class WorkPlanViewSet(viewsets.ModelViewSet):
 
 class DailyReportViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
+    pagination_class = None
     parser_classes = [MultiPartParser, FormParser, JSONParser]
 
     def get_serializer_class(self):
@@ -259,6 +261,7 @@ def get_or_create_weekly_report(department):
 
 class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
+    pagination_class = None
 
     def get_serializer_class(self):
         if self.action == "list":
