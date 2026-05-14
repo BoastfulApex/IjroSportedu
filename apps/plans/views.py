@@ -243,19 +243,19 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        # Bo'limda tasdiqlangan reja bormi?
-        dept_id = serializer.validated_data.get("department_id") or \
-                  serializer.validated_data.get("department").id
-        current_year = timezone.localdate().year
-        approved = WorkPlan.objects.filter(
-            department_id=dept_id,
-            year=current_year,
-            status=WorkPlan.Status.APPROVED,
-        ).exists()
-        if not approved:
-            raise serializers.ValidationError(
-                {"detail": "Bo'limning yillik ish rejasi tasdiqlanmagan. Hisobot kiritish mumkin emas."}
-            )
+        dept = serializer.validated_data.get("department")
+        if dept:
+            current_year = timezone.localdate().year
+            approved = WorkPlan.objects.filter(
+                department=dept,
+                year=current_year,
+                status=WorkPlan.Status.APPROVED,
+            ).exists()
+            if not approved:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied(
+                    "Bo'limning yillik ish rejasi tasdiqlanmagan. Hisobot kiritish mumkin emas."
+                )
         serializer.save(author=self.request.user)
 
     # ── Rasm qo'shish ─────────────────────────────────────────────
