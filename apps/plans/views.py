@@ -1,5 +1,5 @@
 import datetime
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -67,6 +67,33 @@ class WorkPlanViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    # ── Tasdiqlash / Rad etish ────────────────────────────────────
+    @action(detail=True, methods=["post"], url_path="approve")
+    def approve(self, request, pk=None):
+        if not can_view_all(request.user):
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
+        plan = self.get_object()
+        from django.utils import timezone as tz
+        plan.status = WorkPlan.Status.APPROVED
+        plan.approved_by = request.user
+        plan.approved_at = tz.now()
+        plan.reject_reason = ""
+        plan.save(update_fields=["status", "approved_by", "approved_at", "reject_reason"])
+        return Response(WorkPlanSerializer(plan).data)
+
+    @action(detail=True, methods=["post"], url_path="reject")
+    def reject(self, request, pk=None):
+        if not can_view_all(request.user):
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
+        plan = self.get_object()
+        reason = request.data.get("reason", "").strip()
+        plan.status = WorkPlan.Status.REJECTED
+        plan.approved_by = None
+        plan.approved_at = None
+        plan.reject_reason = reason
+        plan.save(update_fields=["status", "approved_by", "approved_at", "reject_reason"])
+        return Response(WorkPlanSerializer(plan).data)
+
     # ── Bandlar CRUD ──────────────────────────────────────────────
     @action(detail=True, methods=["get", "post"], url_path="items")
     def items(self, request, pk=None):
@@ -75,10 +102,12 @@ class WorkPlanViewSet(viewsets.ModelViewSet):
         if request.method == "GET":
             return Response(WorkPlanItemSerializer(plan.items.all(), many=True).data)
 
-        # POST — yangi band qo'shish
+        # Tasdiqlangan rejaga band qo'shib bo'lmaydi
+        if plan.is_approved:
+            return Response({"detail": "Tasdiqlangan rejani o'zgartirish mumkin emas"}, status=403)
+
         data = request.data.copy()
         data["work_plan"] = plan.id
-        # order_number avtomatik
         if not data.get("order_number"):
             last = plan.items.order_by("-order_number").first()
             data["order_number"] = (last.order_number + 1) if last else 1
@@ -91,6 +120,10 @@ class WorkPlanViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["put", "patch", "delete"], url_path=r"items/(?P<item_id>\d+)")
     def item_detail(self, request, pk=None, item_id=None):
         plan = self.get_object()
+
+        if plan.is_approved:
+            return Response({"detail": "Tasdiqlangan rejani o'zgartirish mumkin emas"}, status=403)
+
         from django.shortcuts import get_object_or_404
         item = get_object_or_404(WorkPlanItem, id=item_id, work_plan=plan)
 
@@ -210,6 +243,19 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
+        # Bo'limda tasdiqlangan reja bormi?
+        dept_id = serializer.validated_data.get("department_id") or \
+                  serializer.validated_data.get("department").id
+        current_year = timezone.localdate().year
+        approved = WorkPlan.objects.filter(
+            department_id=dept_id,
+            year=current_year,
+            status=WorkPlan.Status.APPROVED,
+        ).exists()
+        if not approved:
+            raise serializers.ValidationError(
+                {"detail": "Bo'limning yillik ish rejasi tasdiqlanmagan. Hisobot kiritish mumkin emas."}
+            )
         serializer.save(author=self.request.user)
 
     # ── Rasm qo'shish ─────────────────────────────────────────────

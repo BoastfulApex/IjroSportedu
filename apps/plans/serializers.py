@@ -32,26 +32,32 @@ class WorkPlanSerializer(serializers.ModelSerializer):
     items            = WorkPlanItemSerializer(many=True, read_only=True)
     department_name  = serializers.CharField(source="department.name", read_only=True)
     created_by_name  = serializers.CharField(source="created_by.full_name", read_only=True)
+    approved_by_name = serializers.CharField(source="approved_by.full_name", read_only=True, default=None)
     items_count      = serializers.IntegerField(source="items.count", read_only=True)
+    status_display   = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
         model = WorkPlan
         fields = [
             "id", "department", "department_name", "year", "title",
+            "status", "status_display", "reject_reason",
+            "approved_by_name", "approved_at",
             "created_by", "created_by_name", "created_at", "items_count", "items",
         ]
-        read_only_fields = ["created_by", "created_at"]
+        read_only_fields = ["created_by", "created_at", "status", "approved_by", "approved_at", "reject_reason"]
 
 
 class WorkPlanListSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source="department.name", read_only=True)
     created_by_name = serializers.CharField(source="created_by.full_name", read_only=True)
     items_count     = serializers.IntegerField(source="items.count", read_only=True)
+    status_display  = serializers.CharField(source="get_status_display", read_only=True)
 
     class Meta:
         model = WorkPlan
         fields = [
             "id", "department", "department_name", "year", "title",
+            "status", "status_display", "reject_reason",
             "created_by_name", "created_at", "items_count",
         ]
 

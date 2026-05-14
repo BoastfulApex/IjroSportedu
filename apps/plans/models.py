@@ -5,6 +5,12 @@ from django.utils import timezone
 
 class WorkPlan(models.Model):
     """Bo'limning yillik ish rejasi."""
+
+    class Status(models.TextChoices):
+        PENDING  = "PENDING",  "Tasdiq kutilmoqda"
+        APPROVED = "APPROVED", "Tasdiqlangan"
+        REJECTED = "REJECTED", "Rad etilgan"
+
     department = models.ForeignKey(
         "organizations.Department",
         on_delete=models.CASCADE,
@@ -12,12 +18,23 @@ class WorkPlan(models.Model):
     )
     year = models.IntegerField()
     title = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=10, choices=Status.choices, default=Status.PENDING
+    )
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
         null=True,
         related_name="created_work_plans",
     )
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="approved_work_plans",
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    reject_reason = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -29,6 +46,10 @@ class WorkPlan(models.Model):
 
     def __str__(self):
         return f"{self.department.name} — {self.year}"
+
+    @property
+    def is_approved(self):
+        return self.status == self.Status.APPROVED
 
 
 class WorkPlanItem(models.Model):
