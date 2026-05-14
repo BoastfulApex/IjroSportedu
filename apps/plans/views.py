@@ -357,6 +357,20 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def add_extra(self, request, pk=None):
         report = self.get_object()
+
+        # Reja tasdiqlanganligini tekshirish
+        current_year = timezone.localdate().year
+        approved = WorkPlan.objects.filter(
+            department=report.department,
+            year=current_year,
+            status=WorkPlan.Status.APPROVED,
+        ).exists()
+        if not approved:
+            return Response(
+                {"detail": "Bo'limning yillik ish rejasi tasdiqlanmagan. Haftalik hisobotga qo'shimcha kiritish mumkin emas."},
+                status=403,
+            )
+
         content = request.data.get("content", "").strip()
         if not content:
             return Response({"detail": "Mazmun kiritilishi shart"}, status=400)
