@@ -49,7 +49,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         ).exists()
 
     def is_super_admin(self):
-        return self.is_staff or self.role_assignments.filter(
+        return self.is_staff or self.is_superuser or self.role_assignments.filter(
             role=UserRoleAssignment.Role.SUPER_ADMIN, is_active=True
         ).exists()
 

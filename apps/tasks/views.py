@@ -155,6 +155,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), CanCreateTask()]
         return [IsAuthenticated()]
 
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_super_admin():
+            return Response({"detail": "Faqat super admin topshiriqni o'chira oladi."}, status=403)
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=["patch"], url_path="status")
     def update_status(self, request, pk=None):
         task = self.get_object()
