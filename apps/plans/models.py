@@ -100,7 +100,7 @@ class DailyReport(models.Model):
         related_name="daily_reports",
     )
     date           = models.DateField()
-    content        = models.TextField()
+    content        = models.TextField(blank=True, default="")
     work_plan_item = models.ForeignKey(
         WorkPlanItem,
         on_delete=models.SET_NULL,
@@ -164,7 +164,7 @@ class WeeklyReport(models.Model):
 class WeeklyReportExtra(models.Model):
     """Haftalik hisobotga qo'shimcha yozilgan band."""
     weekly_report  = models.ForeignKey(WeeklyReport, on_delete=models.CASCADE, related_name="extras")
-    content        = models.TextField()
+    content        = models.TextField(blank=True, default="")
     work_plan_item = models.ForeignKey(
         WorkPlanItem,
         on_delete=models.SET_NULL,

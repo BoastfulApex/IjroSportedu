@@ -105,13 +105,9 @@ class DailyReportCreateSerializer(serializers.ModelSerializer):
             "department", "date", "content",
             "work_plan_item", "is_outside_plan",
         ]
-
-    def validate(self, attrs):
-        if not attrs.get("is_outside_plan") and not attrs.get("work_plan_item"):
-            raise serializers.ValidationError(
-                "Reja bandi yoki 'Rejadan tashqari' belgilanishi kerak"
-            )
-        return attrs
+        extra_kwargs = {
+            "content": {"allow_blank": True, "required": False},
+        }
 
 
 # ── WeeklyReport ──────────────────────────────────────────────────────────────

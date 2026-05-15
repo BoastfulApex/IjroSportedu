@@ -243,19 +243,6 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        dept = serializer.validated_data.get("department")
-        if dept:
-            current_year = timezone.localdate().year
-            approved = WorkPlan.objects.filter(
-                department=dept,
-                year=current_year,
-                status=WorkPlan.Status.APPROVED,
-            ).exists()
-            if not approved:
-                from rest_framework.exceptions import PermissionDenied
-                raise PermissionDenied(
-                    "Bo'limning yillik ish rejasi tasdiqlanmagan. Hisobot kiritish mumkin emas."
-                )
         serializer.save(author=self.request.user)
 
     # ── Rasm qo'shish ─────────────────────────────────────────────
@@ -357,23 +344,10 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
             parser_classes=[MultiPartParser, FormParser, JSONParser])
     def add_extra(self, request, pk=None):
         report = self.get_object()
-
-        # Reja tasdiqlanganligini tekshirish
-        current_year = timezone.localdate().year
-        approved = WorkPlan.objects.filter(
-            department=report.department,
-            year=current_year,
-            status=WorkPlan.Status.APPROVED,
-        ).exists()
-        if not approved:
-            return Response(
-                {"detail": "Bo'limning yillik ish rejasi tasdiqlanmagan. Haftalik hisobotga qo'shimcha kiritish mumkin emas."},
-                status=403,
-            )
-
         content = request.data.get("content", "").strip()
-        if not content:
-            return Response({"detail": "Mazmun kiritilishi shart"}, status=400)
+        images = request.FILES.getlist("images")
+        if not content and not images:
+            return Response({"detail": "Matn yoki rasm kiritilishi shart"}, status=400)
 
         is_outside = request.data.get("is_outside_plan", "false")
         is_outside = is_outside in (True, "true", "True", "1")
