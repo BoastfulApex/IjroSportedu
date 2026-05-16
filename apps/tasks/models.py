@@ -114,7 +114,11 @@ class Task(models.Model):
         return self.title
 
     def check_overdue(self):
-        if self.deadline and self.status not in [self.Status.CLOSED, self.Status.APPROVED]:
+        active_statuses = [
+            self.Status.CREATED, self.Status.ASSIGNED,
+            self.Status.ACCEPTED, self.Status.IN_PROGRESS,
+        ]
+        if self.deadline and self.status in active_statuses:
             return timezone.now() > self.deadline
         return False
 

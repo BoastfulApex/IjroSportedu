@@ -322,6 +322,24 @@ class TaskViewSet(viewsets.ModelViewSet):
         if attachment_type not in TaskAttachment.AttachmentType.values:
             attachment_type = TaskAttachment.AttachmentType.TASK_FILE
 
+        # Ruxsat tekshiruvi:
+        # TASK_FILE — faqat admin/task controller yuklashi mumkin
+        # REPORT_FILE — faqat topshiriq ijrochisi yuklashi mumkin
+        user = request.user
+        is_admin = user.is_super_admin() or user.is_task_controller()
+        is_assignee = task.assignees.filter(user=user).exists()
+
+        if attachment_type == TaskAttachment.AttachmentType.TASK_FILE and not is_admin:
+            return Response(
+                {"detail": "Topshiriq faylini faqat topshiriqlar bo'limi yoki admin yuklashi mumkin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if attachment_type == TaskAttachment.AttachmentType.REPORT_FILE and not (is_assignee or is_admin):
+            return Response(
+                {"detail": "Hisobot faylini faqat topshiriq ijrochisi yuklashi mumkin."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         attachment = TaskAttachment.objects.create(
             task=task,
             file=file,

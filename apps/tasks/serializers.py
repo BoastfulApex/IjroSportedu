@@ -5,7 +5,7 @@ from apps.accounts.serializers import UserListSerializer
 
 ACTIVE_STATUSES = {
     Task.Status.CREATED, Task.Status.ASSIGNED, Task.Status.ACCEPTED,
-    Task.Status.IN_PROGRESS, Task.Status.SUBMITTED, Task.Status.REVIEWING,
+    Task.Status.IN_PROGRESS,
 }
 
 
