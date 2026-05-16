@@ -205,8 +205,11 @@ class TaskViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
+        from django.utils import timezone as tz
         old_status = task.status
         task.status = new_status
+        if new_status == Task.Status.SUBMITTED and not task.submitted_at:
+            task.submitted_at = tz.now()
         task._actor = request.user
         task.save()
 

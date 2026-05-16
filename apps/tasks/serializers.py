@@ -3,10 +3,6 @@ from django.utils import timezone
 from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem, RecurringMeetingItem
 from apps.accounts.serializers import UserListSerializer
 
-ACTIVE_STATUSES = {
-    Task.Status.CREATED, Task.Status.ASSIGNED, Task.Status.ACCEPTED,
-    Task.Status.IN_PROGRESS,
-}
 
 
 class TaskAssigneeSerializer(serializers.ModelSerializer):
@@ -131,9 +127,7 @@ class TaskListSerializer(serializers.ModelSerializer):
         return obj.assignees.count()
 
     def get_is_overdue(self, obj):
-        if not obj.deadline:
-            return False
-        return obj.deadline < timezone.now() and obj.status in ACTIVE_STATUSES
+        return obj.check_overdue()
 
 
 class TaskDetailSerializer(serializers.ModelSerializer):
@@ -192,9 +186,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
         return obj.comments.count()
 
     def get_is_overdue(self, obj):
-        if not obj.deadline:
-            return False
-        return obj.deadline < timezone.now() and obj.status in ACTIVE_STATUSES
+        return obj.check_overdue()
 
     def get_valid_transitions(self, obj):
         return Task.VALID_TRANSITIONS.get(obj.status, [])

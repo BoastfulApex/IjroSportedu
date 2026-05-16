@@ -88,6 +88,7 @@ class Task(models.Model):
         related_name="received_tasks",
     )
     deadline = models.DateTimeField(null=True, blank=True, db_index=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
     is_overdue = models.BooleanField(default=False, db_index=True)
     meeting = models.ForeignKey(
         "Meeting",
@@ -114,12 +115,20 @@ class Task(models.Model):
         return self.title
 
     def check_overdue(self):
-        active_statuses = [
+        if not self.deadline:
+            return False
+        active_statuses = {
             self.Status.CREATED, self.Status.ASSIGNED,
             self.Status.ACCEPTED, self.Status.IN_PROGRESS,
-        ]
-        if self.deadline and self.status in active_statuses:
+        }
+        submitted_statuses = {
+            self.Status.SUBMITTED, self.Status.APPROVED,
+            self.Status.RETURNED, self.Status.CLOSED,
+        }
+        if self.status in active_statuses:
             return timezone.now() > self.deadline
+        if self.status in submitted_statuses and self.submitted_at:
+            return self.submitted_at > self.deadline
         return False
 
     def can_transition_to(self, new_status):
