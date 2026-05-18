@@ -91,16 +91,28 @@ class ByOrganizationReportView(APIView):
         if org_ids is not None:
             orgs = orgs.filter(id__in=org_ids)
 
+        now = timezone.now()
         data = []
         for org in orgs.prefetch_related("received_tasks"):
             tasks = org.received_tasks.all()
+            late_done = tasks.filter(
+                submitted_at__isnull=False,
+                deadline__isnull=False,
+                submitted_at__gt=F("deadline"),
+            ).count()
+            overdue = tasks.filter(
+                deadline__isnull=False,
+                deadline__lt=now,
+                submitted_at__isnull=True,
+            ).exclude(status__in=["APPROVED", "CLOSED"]).count()
             data.append({
-                "organization_id": org.id,
+                "organization_id":   org.id,
                 "organization_name": org.name,
-                "org_type": org.org_type,
-                "total": tasks.count(),
-                "by_status": dict(tasks.values_list("status").annotate(c=Count("id"))),
-                "overdue": tasks.filter(is_overdue=True).count(),
+                "org_type":          org.org_type,
+                "total":             tasks.count(),
+                "by_status":         dict(tasks.values_list("status").annotate(c=Count("id"))),
+                "overdue":           overdue,
+                "late_done":         late_done,
             })
         return Response(data)
 
@@ -113,13 +125,23 @@ class ByDepartmentReportView(APIView):
         org_ids = user.get_report_org_ids()
         org_id = request.query_params.get("organization")
 
+        now = timezone.now()
         qs = Task.objects.values(
             "target_department__id",
             "target_department__name",
             "target_department__organization__name",
         ).annotate(
             total=Count("id"),
-            overdue=Count("id", filter=Q(is_overdue=True)),
+            overdue=Count("id", filter=Q(
+                deadline__isnull=False,
+                deadline__lt=now,
+                submitted_at__isnull=True,
+            )),
+            late_done=Count("id", filter=Q(
+                submitted_at__isnull=False,
+                deadline__isnull=False,
+                submitted_at__gt=F("deadline"),
+            )),
         )
 
         if org_id:
