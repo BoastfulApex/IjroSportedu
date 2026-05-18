@@ -154,9 +154,10 @@ def send_comment_notification(self, task_id, comment_id, author_id):
 def check_overdue_tasks():
     from apps.tasks.models import Task
     now = timezone.now()
+    # Faqat hali topshirilmagan active statuslar — SUBMITTED/REVIEWING emas
     active_statuses = [
-        Task.Status.CREATED, Task.Status.ASSIGNED, Task.Status.ACCEPTED,
-        Task.Status.IN_PROGRESS, Task.Status.SUBMITTED, Task.Status.REVIEWING,
+        Task.Status.CREATED, Task.Status.ASSIGNED,
+        Task.Status.ACCEPTED, Task.Status.IN_PROGRESS,
     ]
     overdue_tasks = Task.objects.filter(
         deadline__lt=now, status__in=active_statuses, is_overdue=False

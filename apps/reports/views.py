@@ -1,7 +1,7 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F
 from django.utils import timezone
 from django.core.cache import cache
 
@@ -39,14 +39,20 @@ class OverviewReportView(APIView):
         by_status = dict(qs.values_list("status").annotate(count=Count("id")))
         by_priority = dict(qs.values_list("priority").annotate(count=Count("id")))
 
+        # Muddati o'tgan: hali topshirilmagan (submitted_at yo'q) va deadline o'tgan
         overdue_qs = qs.filter(
+            deadline__isnull=False,
             deadline__lt=now,
-            status__in=[
-                Task.Status.CREATED, Task.Status.ASSIGNED,
-                Task.Status.ACCEPTED, Task.Status.IN_PROGRESS,
-                Task.Status.SUBMITTED, Task.Status.REVIEWING,
-            ]
+            submitted_at__isnull=True,
+        ).exclude(status__in=[Task.Status.APPROVED, Task.Status.CLOSED])
+
+        # Kechikib bajarilgan: submitted_at > deadline
+        late_done_qs = qs.filter(
+            submitted_at__isnull=False,
+            deadline__isnull=False,
+            submitted_at__gt=F("deadline"),
         )
+
         active_qs = qs.filter(
             status__in=[Task.Status.IN_PROGRESS, Task.Status.ACCEPTED]
         )
@@ -60,6 +66,7 @@ class OverviewReportView(APIView):
             "by_status":     by_status,
             "by_priority":   by_priority,
             "overdue":       overdue_qs.count(),
+            "late_done":     late_done_qs.count(),
             "closed_today":  closed_qs.filter(updated_at__date=now.date()).count(),
             # Tur bo'yicha breakdownlar
             "total_by_type":   by_type(qs),

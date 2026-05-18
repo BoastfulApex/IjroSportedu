@@ -768,11 +768,9 @@ class MeetingViewSet(viewsets.ModelViewSet):
     def statistics(self, request, pk=None):
         """Majlis bo'yicha statistika (faqat super admin).
 
-        Mantiq:
-          - muddati_otgan   : is_overdue=True AND submitted_at IS NULL
-                              (deadline o'tdi, ijrochi hech narsa yuklamadi)
-          - kechikib_bajarilgan : is_overdue=True AND submitted_at IS NOT NULL
-                              (ijrochi kech bo'lsa ham yuklaganida)
+        Mantiq (is_overdue fieldiga tayanmaydi — to'g'ridan DB fieldlari):
+          - late_done      : submitted_at > deadline  (kech topshirilgan)
+          - overdue_pending: deadline < now AND submitted_at IS NULL (hali topshirilmagan)
         """
         if not request.user.is_super_admin():
             return Response({"detail": "Ruxsat yo'q"}, status=403)
@@ -782,14 +780,25 @@ class MeetingViewSet(viewsets.ModelViewSet):
             "target_department", "target_organization"
         )
 
-        total      = tasks.count()
-        completed  = tasks.filter(status__in=["APPROVED", "CLOSED"]).count()
+        from django.db.models import F
+        now = timezone.now()
 
-        # Kechikib bajarilgan: kechikkan (is_overdue) lekin ijrosi yuklangan
-        late_done  = tasks.filter(is_overdue=True, submitted_at__isnull=False).count()
+        total     = tasks.count()
+        completed = tasks.filter(status__in=["APPROVED", "CLOSED"]).count()
 
-        # Muddati o'tgan: kechikkan va ijrosi hali yuklanmagan
-        overdue_pending = tasks.filter(is_overdue=True, submitted_at__isnull=True).count()
+        # Kechikib bajarilgan: submitted_at mavjud va deadline dan keyin yuborilgan
+        late_done = tasks.filter(
+            submitted_at__isnull=False,
+            deadline__isnull=False,
+            submitted_at__gt=F("deadline"),
+        ).count()
+
+        # Muddati o'tgan: deadline o'tgan, hali topshirilmagan
+        overdue_pending = tasks.filter(
+            deadline__isnull=False,
+            deadline__lt=now,
+            submitted_at__isnull=True,
+        ).exclude(status__in=["APPROVED", "CLOSED"]).count()
 
         # Bo'limlar bo'yicha statistika
         dept_qs = (
@@ -802,11 +811,13 @@ class MeetingViewSet(viewsets.ModelViewSet):
                     output_field=IntegerField(),
                 )),
                 late_done=Count(Case(
-                    When(is_overdue=True, submitted_at__isnull=False, then=1),
+                    When(submitted_at__isnull=False, deadline__isnull=False,
+                         submitted_at__gt=F("deadline"), then=1),
                     output_field=IntegerField(),
                 )),
                 overdue_pending=Count(Case(
-                    When(is_overdue=True, submitted_at__isnull=True, then=1),
+                    When(deadline__isnull=False, deadline__lt=now,
+                         submitted_at__isnull=True, then=1),
                     output_field=IntegerField(),
                 )),
             )
