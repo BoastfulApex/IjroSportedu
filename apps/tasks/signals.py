@@ -56,10 +56,9 @@ def create_task_history(sender, instance, created, **kwargs):
                 new_value=formatter(new_val) if new_val is not None else "",
             )
 
-    # overdue check
+    # overdue check — har doim yangilanadi (status o'zgarsa ham)
     instance.is_overdue = instance.check_overdue()
-    if old_state.get("status") == instance.status:
-        Task.objects.filter(pk=instance.pk).update(is_overdue=instance.is_overdue)
+    Task.objects.filter(pk=instance.pk).update(is_overdue=instance.is_overdue)
 
 
 @receiver(post_save, sender=TaskAssignee)

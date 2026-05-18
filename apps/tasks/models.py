@@ -122,8 +122,8 @@ class Task(models.Model):
             self.Status.ACCEPTED, self.Status.IN_PROGRESS,
         }
         submitted_statuses = {
-            self.Status.SUBMITTED, self.Status.APPROVED,
-            self.Status.RETURNED, self.Status.CLOSED,
+            self.Status.SUBMITTED, self.Status.REVIEWING,
+            self.Status.APPROVED, self.Status.RETURNED, self.Status.CLOSED,
         }
         if self.status in active_statuses:
             return timezone.now() > self.deadline
