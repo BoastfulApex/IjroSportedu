@@ -11,6 +11,7 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
     organization_name  = serializers.CharField(source="organization.name",read_only=True)
     department_name    = serializers.CharField(source="department.name",  read_only=True)
     chair_name         = serializers.CharField(source="chair.name",       read_only=True)
+    position           = serializers.SerializerMethodField()
 
     class Meta:
         model = TaskAssignee
@@ -19,9 +20,24 @@ class TaskAssigneeSerializer(serializers.ModelSerializer):
             "organization", "organization_name",
             "department", "department_name",
             "chair", "chair_name",
+            "position",
             "is_primary", "is_leader", "assigned_at",
         ]
         read_only_fields = ["assigned_at"]
+
+    def get_position(self, obj):
+        """Bo'lim/kafedra bo'lmasa foydalanuvchining lavozimini qaytaradi."""
+        if obj.department_id or obj.chair_id:
+            return None
+        role = (
+            obj.user.role_assignments
+            .filter(is_active=True)
+            .order_by("-is_institute_leader", "-is_branch_leader", "-is_head")
+            .first()
+        )
+        if not role:
+            return None
+        return role.custom_role_name or role.get_role_display()
 
 
 class TaskAttachmentSerializer(serializers.ModelSerializer):
