@@ -892,6 +892,47 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 "overdue_pending": row["overdue_pending"],
             })
 
+        def _assignee_label(task):
+            a = task.assignees.select_related("department", "chair", "user").first()
+            if not a:
+                return "—"
+            if a.department_id:
+                return f"{a.user.full_name} ({a.department.name})"
+            if a.chair_id:
+                return f"{a.user.full_name} ({a.chair.name})"
+            return a.user.full_name
+
+        late_done_list = [
+            {
+                "id":       t.id,
+                "title":    t.title,
+                "deadline": t.deadline.strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+                "assignee": _assignee_label(t),
+            }
+            for t in tasks.filter(
+                submitted_at__isnull=False,
+                deadline__isnull=False,
+                submitted_at__gt=F("deadline"),
+            ).prefetch_related("assignees__department", "assignees__chair", "assignees__user")
+            .order_by("deadline")
+        ]
+
+        overdue_list = [
+            {
+                "id":       t.id,
+                "title":    t.title,
+                "deadline": t.deadline.strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+                "assignee": _assignee_label(t),
+            }
+            for t in tasks.filter(
+                deadline__isnull=False,
+                deadline__lt=now,
+                submitted_at__isnull=True,
+            ).exclude(status__in=["APPROVED", "CLOSED"])
+            .prefetch_related("assignees__department", "assignees__chair", "assignees__user")
+            .order_by("deadline")
+        ]
+
         return Response({
             "total":           total,
             "completed":       completed,
@@ -899,6 +940,8 @@ class MeetingViewSet(viewsets.ModelViewSet):
             "overdue_pending": overdue_pending,
             "by_department":   by_department,
             "by_organization": by_organization,
+            "late_done_list":  late_done_list,
+            "overdue_list":    overdue_list,
         })
 
 
