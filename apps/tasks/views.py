@@ -4,7 +4,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
+from django.db.models import Q, Count, Case, When, IntegerField
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
 
@@ -762,6 +763,58 @@ class MeetingViewSet(viewsets.ModelViewSet):
         item.save(update_fields=["recurring_item"])
 
         return Response(MeetingAgendaItemSerializer(item).data)
+
+    @action(detail=True, methods=["get"], url_path="statistics")
+    def statistics(self, request, pk=None):
+        """Majlis bo'yicha statistika (faqat super admin)."""
+        if not request.user.is_super_admin():
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
+
+        meeting = self.get_object()
+        tasks = Task.objects.filter(meeting=meeting).select_related(
+            "target_department", "target_organization"
+        )
+
+        now = timezone.now()
+        total       = tasks.count()
+        completed   = tasks.filter(status__in=["APPROVED", "CLOSED"]).count()
+        overdue_done = tasks.filter(
+            status__in=["APPROVED", "CLOSED"],
+            is_overdue=True,
+        ).count()
+        overdue_pending = tasks.filter(
+            is_overdue=True,
+        ).exclude(status__in=["APPROVED", "CLOSED"]).count()
+
+        # Bo'limlar bo'yicha statistika
+        dept_qs = (
+            tasks
+            .values("target_department__id", "target_department__name", "target_organization__name")
+            .annotate(
+                total=Count("id"),
+                done=Count(Case(When(status__in=["APPROVED", "CLOSED"], then=1), output_field=IntegerField())),
+                overdue=Count(Case(When(is_overdue=True, then=1), output_field=IntegerField())),
+            )
+            .order_by("-total")
+        )
+
+        by_department = []
+        for row in dept_qs:
+            dept_name = row["target_department__name"] or row["target_organization__name"] or "Noma'lum"
+            by_department.append({
+                "name":    dept_name,
+                "total":   row["total"],
+                "done":    row["done"],
+                "overdue": row["overdue"],
+            })
+
+        return Response({
+            "total":          total,
+            "completed":      completed,
+            "overdue_done":   overdue_done,
+            "overdue_pending": overdue_pending,
+            "by_department":  by_department,
+        })
 
 
 # ── Doimiy bandlar ViewSet ──────────────────────────────────────────────────
