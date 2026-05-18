@@ -800,44 +800,26 @@ class MeetingViewSet(viewsets.ModelViewSet):
             submitted_at__isnull=True,
         ).exclude(status__in=["APPROVED", "CLOSED"]).count()
 
-        def _stat_annotation(qs):
-            return qs.annotate(
-                total=Count("task_id", distinct=True),
-                done=Count(Case(
-                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                late_done=Count(Case(
-                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
-                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                overdue_pending=Count(Case(
-                    When(task__deadline__isnull=False, task__deadline__lt=now,
-                         task__submitted_at__isnull=True, then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-            )
+        # Har bir task uchun birinchi primary assignee ni olib, uning bo'lim/kafedra/lavozimini aniqlaymiz
+        all_assignees = (
+            TaskAssignee.objects
+            .filter(task__meeting=meeting)
+            .select_related("task", "department", "chair", "user")
+            .prefetch_related("user__role_assignments__chair", "user__role_assignments__department")
+            .order_by("task_id", "-is_primary", "-is_leader", "id")
+        )
 
-        base_qs = TaskAssignee.objects.filter(task__meeting=meeting)
+        # Har task uchun faqat bitta (primary) assignee ni olamiz
+        task_assignee: dict[int, "TaskAssignee"] = {}
+        for a in all_assignees:
+            if a.task_id not in task_assignee:
+                task_assignee[a.task_id] = a
 
-        # 1) Bo'lim bor
-        dept_qs = _stat_annotation(
-            base_qs.filter(department__isnull=False).values("department__id", "department__name")
-        )
-        # 2) Kafedra bor, bo'lim yo'q
-        chair_qs = _stat_annotation(
-            base_qs.filter(department__isnull=True, chair__isnull=False)
-            .values("chair__id", "chair__name")
-        )
-        # 3) Bo'lim ham, kafedra ham yo'q — lavozim bilan
-        no_unit_assignees = (
-            base_qs.filter(department__isnull=True, chair__isnull=True)
-            .select_related("user")
-            .distinct()
-        )
-        position_map: dict[int, str] = {}
-        for a in no_unit_assignees:
+        def _unit_name(a) -> str:
+            if a.department_id:
+                return a.department.name
+            if a.chair_id:
+                return a.chair.name
             role = (
                 a.user.role_assignments
                 .filter(is_active=True)
@@ -846,40 +828,32 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 .first()
             )
             if role and role.chair:
-                name = role.chair.name
-            elif role and role.department:
-                name = role.department.name
-            elif role:
-                name = role.custom_role_name or role.get_role_display()
-            else:
-                name = a.user.full_name
-            position_map[a.user_id] = name
-
-        no_unit_qs = _stat_annotation(
-            base_qs.filter(department__isnull=True, chair__isnull=True).values("user_id")
-        )
+                return role.chair.name
+            if role and role.department:
+                return role.department.name
+            if role:
+                return role.custom_role_name or role.get_role_display()
+            return a.user.full_name
 
         dept_merged: dict[str, dict] = {}
-
-        def _merge(name: str, row: dict):
-            if name in dept_merged:
-                dept_merged[name]["total"]           += row["total"]
-                dept_merged[name]["done"]            += row["done"]
-                dept_merged[name]["late_done"]       += row["late_done"]
-                dept_merged[name]["overdue_pending"] += row["overdue_pending"]
-            else:
-                dept_merged[name] = {
-                    "name": name,
-                    "total": row["total"], "done": row["done"],
-                    "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
-                }
-
-        for row in dept_qs:
-            _merge(row["department__name"] or "Noma'lum", row)
-        for row in chair_qs:
-            _merge(row["chair__name"] or "Noma'lum", row)
-        for row in no_unit_qs:
-            _merge(position_map.get(row["user_id"], "Noma'lum"), row)
+        for task_id, a in task_assignee.items():
+            t = a.task
+            name = _unit_name(a)
+            is_done = t.status in ("APPROVED", "CLOSED")
+            is_late = (t.submitted_at and t.deadline and t.submitted_at > t.deadline)
+            is_overdue_p = (
+                t.deadline and t.deadline < now and not t.submitted_at
+                and t.status not in ("APPROVED", "CLOSED")
+            )
+            if name not in dept_merged:
+                dept_merged[name] = {"name": name, "total": 0, "done": 0, "late_done": 0, "overdue_pending": 0}
+            dept_merged[name]["total"] += 1
+            if is_done:
+                dept_merged[name]["done"] += 1
+            if is_late:
+                dept_merged[name]["late_done"] += 1
+            if is_overdue_p:
+                dept_merged[name]["overdue_pending"] += 1
 
         by_department = sorted(dept_merged.values(), key=lambda x: -x["total"])
 
