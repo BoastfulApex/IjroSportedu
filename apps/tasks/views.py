@@ -800,12 +800,8 @@ class MeetingViewSet(viewsets.ModelViewSet):
             submitted_at__isnull=True,
         ).exclude(status__in=["APPROVED", "CLOSED"]).count()
 
-        # ── Ijrochilar bo'limi bo'yicha ──────────────────────────────────────
-        assignee_dept_qs = (
-            TaskAssignee.objects
-            .filter(task__meeting=meeting)
-            .values("department__id", "department__name", "organization__name")
-            .annotate(
+        def _stat_annotation(qs):
+            return qs.annotate(
                 total=Count("task_id", distinct=True),
                 done=Count(Case(
                     When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
@@ -822,19 +818,26 @@ class MeetingViewSet(viewsets.ModelViewSet):
                     output_field=IntegerField(),
                 )),
             )
-            .order_by("-total")
-        )
 
-        # Bo'lim yo'q assigneelar uchun lavozimni oldindan yuklab olamiz
-        no_dept_assignees = (
-            TaskAssignee.objects
-            .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
+        base_qs = TaskAssignee.objects.filter(task__meeting=meeting)
+
+        # 1) Bo'lim bor
+        dept_qs = _stat_annotation(
+            base_qs.filter(department__isnull=False).values("department__id", "department__name")
+        )
+        # 2) Kafedra bor, bo'lim yo'q
+        chair_qs = _stat_annotation(
+            base_qs.filter(department__isnull=True, chair__isnull=False)
+            .values("chair__id", "chair__name")
+        )
+        # 3) Bo'lim ham, kafedra ham yo'q — lavozim bilan
+        no_unit_assignees = (
+            base_qs.filter(department__isnull=True, chair__isnull=True)
             .select_related("user")
-            .prefetch_related("user__role_assignments")
             .distinct()
         )
-        no_dept_position_map: dict[int, str] = {}
-        for a in no_dept_assignees:
+        position_map: dict[int, str] = {}
+        for a in no_unit_assignees:
             role = (
                 a.user.role_assignments
                 .filter(is_active=True)
@@ -842,53 +845,30 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 .first()
             )
             pos = (role.custom_role_name or role.get_role_display()) if role else None
-            no_dept_position_map[a.user_id] = pos or a.user.full_name
+            position_map[a.user_id] = pos or a.user.full_name
 
-        # Bo'lim/kafedrasiz assigneelar: user_id bo'yicha guruhlab, lavozim bilan ko'rsatamiz
-        no_dept_by_user_qs = (
-            TaskAssignee.objects
-            .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
-            .values("user_id")
-            .annotate(
-                total=Count("task_id", distinct=True),
-                done=Count(Case(
-                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                late_done=Count(Case(
-                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
-                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                overdue_pending=Count(Case(
-                    When(task__deadline__isnull=False, task__deadline__lt=now,
-                         task__submitted_at__isnull=True, then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-            )
+        no_unit_qs = _stat_annotation(
+            base_qs.filter(department__isnull=True, chair__isnull=True).values("user_id")
         )
 
         by_department = []
-        # Bo'lim/kafedrasi bor assigneelar
-        for row in assignee_dept_qs:
-            if row["department__id"] is None:
-                continue
+        for row in dept_qs:
             by_department.append({
-                "name":            row["department__name"] or "Noma'lum",
-                "total":           row["total"],
-                "done":            row["done"],
-                "late_done":       row["late_done"],
-                "overdue_pending": row["overdue_pending"],
+                "name": row["department__name"] or "Noma'lum",
+                "total": row["total"], "done": row["done"],
+                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
             })
-        # Bo'lim/kafedrasi yo'q — lavozimi bilan
-        for row in no_dept_by_user_qs:
-            name = no_dept_position_map.get(row["user_id"], "Noma'lum")
+        for row in chair_qs:
             by_department.append({
-                "name":            name,
-                "total":           row["total"],
-                "done":            row["done"],
-                "late_done":       row["late_done"],
-                "overdue_pending": row["overdue_pending"],
+                "name": row["chair__name"] or "Noma'lum",
+                "total": row["total"], "done": row["done"],
+                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
+            })
+        for row in no_unit_qs:
+            by_department.append({
+                "name": position_map.get(row["user_id"], "Noma'lum"),
+                "total": row["total"], "done": row["done"],
+                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
             })
         by_department.sort(key=lambda x: -x["total"])
 
