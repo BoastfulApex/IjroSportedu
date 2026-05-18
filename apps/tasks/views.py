@@ -859,26 +859,29 @@ class MeetingViewSet(viewsets.ModelViewSet):
             base_qs.filter(department__isnull=True, chair__isnull=True).values("user_id")
         )
 
-        by_department = []
+        dept_merged: dict[str, dict] = {}
+
+        def _merge(name: str, row: dict):
+            if name in dept_merged:
+                dept_merged[name]["total"]           += row["total"]
+                dept_merged[name]["done"]            += row["done"]
+                dept_merged[name]["late_done"]       += row["late_done"]
+                dept_merged[name]["overdue_pending"] += row["overdue_pending"]
+            else:
+                dept_merged[name] = {
+                    "name": name,
+                    "total": row["total"], "done": row["done"],
+                    "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
+                }
+
         for row in dept_qs:
-            by_department.append({
-                "name": row["department__name"] or "Noma'lum",
-                "total": row["total"], "done": row["done"],
-                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
-            })
+            _merge(row["department__name"] or "Noma'lum", row)
         for row in chair_qs:
-            by_department.append({
-                "name": row["chair__name"] or "Noma'lum",
-                "total": row["total"], "done": row["done"],
-                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
-            })
+            _merge(row["chair__name"] or "Noma'lum", row)
         for row in no_unit_qs:
-            by_department.append({
-                "name": position_map.get(row["user_id"], "Noma'lum"),
-                "total": row["total"], "done": row["done"],
-                "late_done": row["late_done"], "overdue_pending": row["overdue_pending"],
-            })
-        by_department.sort(key=lambda x: -x["total"])
+            _merge(position_map.get(row["user_id"], "Noma'lum"), row)
+
+        by_department = sorted(dept_merged.values(), key=lambda x: -x["total"])
 
         # ── Ijrochilar tashkiloti bo'yicha ────────────────────────────────────
         assignee_org_qs = (
