@@ -825,9 +825,38 @@ class MeetingViewSet(viewsets.ModelViewSet):
             .order_by("-total")
         )
 
+        # Bo'lim yo'q assigneelar uchun lavozimni oldindan yuklab olamiz
+        no_dept_assignees = (
+            TaskAssignee.objects
+            .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
+            .select_related("user")
+            .prefetch_related("user__role_assignments")
+            .distinct()
+        )
+        no_dept_position_map: dict[int, str] = {}
+        for a in no_dept_assignees:
+            role = (
+                a.user.role_assignments
+                .filter(is_active=True)
+                .order_by("-is_institute_leader", "-is_branch_leader", "-is_head")
+                .first()
+            )
+            pos = (role.custom_role_name or role.get_role_display()) if role else None
+            no_dept_position_map[a.user_id] = pos or a.user.full_name
+
         by_department = []
         for row in assignee_dept_qs:
-            name = row["department__name"] or row["organization__name"] or "Noma'lum"
+            if row["department__id"] is None:
+                # Lavozim bo'yicha guruhlash kerak — har bir user alohida qator
+                task_ids = (
+                    TaskAssignee.objects
+                    .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
+                    .values_list("task_id", flat=True)
+                    .distinct()
+                )
+                # Allaqachon qo'shilgan, pastda alohida loop bilan qo'shamiz
+                continue
+            name = row["department__name"] or "Noma'lum"
             by_department.append({
                 "name":            name,
                 "total":           row["total"],
@@ -835,6 +864,40 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 "late_done":       row["late_done"],
                 "overdue_pending": row["overdue_pending"],
             })
+
+        # Bo'lim/kafedrasiz assigneelar lavozim bo'yicha alohida guruhlash
+        no_dept_by_pos_qs = (
+            TaskAssignee.objects
+            .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
+            .values("user_id")
+            .annotate(
+                total=Count("task_id", distinct=True),
+                done=Count(Case(
+                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+                late_done=Count(Case(
+                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
+                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+                overdue_pending=Count(Case(
+                    When(task__deadline__isnull=False, task__deadline__lt=now,
+                         task__submitted_at__isnull=True, then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+            )
+        )
+        for row in no_dept_by_pos_qs:
+            name = no_dept_position_map.get(row["user_id"], "Noma'lum")
+            by_department.append({
+                "name":            name,
+                "total":           row["total"],
+                "done":            row["done"],
+                "late_done":       row["late_done"],
+                "overdue_pending": row["overdue_pending"],
+            })
+        by_department.sort(key=lambda x: -x["total"])
 
         # ── Ijrochilar tashkiloti bo'yicha ────────────────────────────────────
         assignee_org_qs = (
