@@ -800,24 +800,25 @@ class MeetingViewSet(viewsets.ModelViewSet):
             submitted_at__isnull=True,
         ).exclude(status__in=["APPROVED", "CLOSED"]).count()
 
-        # Bo'limlar bo'yicha statistika
-        dept_qs = (
-            tasks
-            .values("target_department__id", "target_department__name", "target_organization__name")
+        # ── Ijrochilar bo'limi bo'yicha ──────────────────────────────────────
+        assignee_dept_qs = (
+            TaskAssignee.objects
+            .filter(task__meeting=meeting)
+            .values("department__id", "department__name", "organization__name")
             .annotate(
-                total=Count("id"),
+                total=Count("task_id", distinct=True),
                 done=Count(Case(
-                    When(status__in=["APPROVED", "CLOSED"], then=1),
+                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
                     output_field=IntegerField(),
                 )),
                 late_done=Count(Case(
-                    When(submitted_at__isnull=False, deadline__isnull=False,
-                         submitted_at__gt=F("deadline"), then=1),
+                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
+                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
                     output_field=IntegerField(),
                 )),
                 overdue_pending=Count(Case(
-                    When(deadline__isnull=False, deadline__lt=now,
-                         submitted_at__isnull=True, then=1),
+                    When(task__deadline__isnull=False, task__deadline__lt=now,
+                         task__submitted_at__isnull=True, then=F("task_id")),
                     output_field=IntegerField(),
                 )),
             )
@@ -825,10 +826,45 @@ class MeetingViewSet(viewsets.ModelViewSet):
         )
 
         by_department = []
-        for row in dept_qs:
-            dept_name = row["target_department__name"] or row["target_organization__name"] or "Noma'lum"
+        for row in assignee_dept_qs:
+            name = row["department__name"] or row["organization__name"] or "Noma'lum"
             by_department.append({
-                "name":            dept_name,
+                "name":            name,
+                "total":           row["total"],
+                "done":            row["done"],
+                "late_done":       row["late_done"],
+                "overdue_pending": row["overdue_pending"],
+            })
+
+        # ── Ijrochilar tashkiloti bo'yicha ────────────────────────────────────
+        assignee_org_qs = (
+            TaskAssignee.objects
+            .filter(task__meeting=meeting)
+            .values("organization__id", "organization__name")
+            .annotate(
+                total=Count("task_id", distinct=True),
+                done=Count(Case(
+                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+                late_done=Count(Case(
+                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
+                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+                overdue_pending=Count(Case(
+                    When(task__deadline__isnull=False, task__deadline__lt=now,
+                         task__submitted_at__isnull=True, then=F("task_id")),
+                    output_field=IntegerField(),
+                )),
+            )
+            .order_by("-total")
+        )
+
+        by_organization = []
+        for row in assignee_org_qs:
+            by_organization.append({
+                "name":            row["organization__name"] or "Noma'lum",
                 "total":           row["total"],
                 "done":            row["done"],
                 "late_done":       row["late_done"],
@@ -841,6 +877,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
             "late_done":       late_done,
             "overdue_pending": overdue_pending,
             "by_department":   by_department,
+            "by_organization": by_organization,
         })
 
 
