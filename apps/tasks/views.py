@@ -844,29 +844,8 @@ class MeetingViewSet(viewsets.ModelViewSet):
             pos = (role.custom_role_name or role.get_role_display()) if role else None
             no_dept_position_map[a.user_id] = pos or a.user.full_name
 
-        by_department = []
-        for row in assignee_dept_qs:
-            if row["department__id"] is None:
-                # Lavozim bo'yicha guruhlash kerak — har bir user alohida qator
-                task_ids = (
-                    TaskAssignee.objects
-                    .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
-                    .values_list("task_id", flat=True)
-                    .distinct()
-                )
-                # Allaqachon qo'shilgan, pastda alohida loop bilan qo'shamiz
-                continue
-            name = row["department__name"] or "Noma'lum"
-            by_department.append({
-                "name":            name,
-                "total":           row["total"],
-                "done":            row["done"],
-                "late_done":       row["late_done"],
-                "overdue_pending": row["overdue_pending"],
-            })
-
-        # Bo'lim/kafedrasiz assigneelar lavozim bo'yicha alohida guruhlash
-        no_dept_by_pos_qs = (
+        # Bo'lim/kafedrasiz assigneelar: user_id bo'yicha guruhlab, lavozim bilan ko'rsatamiz
+        no_dept_by_user_qs = (
             TaskAssignee.objects
             .filter(task__meeting=meeting, department__isnull=True, chair__isnull=True)
             .values("user_id")
@@ -888,7 +867,21 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 )),
             )
         )
-        for row in no_dept_by_pos_qs:
+
+        by_department = []
+        # Bo'lim/kafedrasi bor assigneelar
+        for row in assignee_dept_qs:
+            if row["department__id"] is None:
+                continue
+            by_department.append({
+                "name":            row["department__name"] or "Noma'lum",
+                "total":           row["total"],
+                "done":            row["done"],
+                "late_done":       row["late_done"],
+                "overdue_pending": row["overdue_pending"],
+            })
+        # Bo'lim/kafedrasi yo'q — lavozimi bilan
+        for row in no_dept_by_user_qs:
             name = no_dept_position_map.get(row["user_id"], "Noma'lum")
             by_department.append({
                 "name":            name,
