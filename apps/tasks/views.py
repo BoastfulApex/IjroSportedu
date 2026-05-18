@@ -766,7 +766,14 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="statistics")
     def statistics(self, request, pk=None):
-        """Majlis bo'yicha statistika (faqat super admin)."""
+        """Majlis bo'yicha statistika (faqat super admin).
+
+        Mantiq:
+          - muddati_otgan   : is_overdue=True AND submitted_at IS NULL
+                              (deadline o'tdi, ijrochi hech narsa yuklamadi)
+          - kechikib_bajarilgan : is_overdue=True AND submitted_at IS NOT NULL
+                              (ijrochi kech bo'lsa ham yuklaganida)
+        """
         if not request.user.is_super_admin():
             return Response({"detail": "Ruxsat yo'q"}, status=403)
 
@@ -775,16 +782,14 @@ class MeetingViewSet(viewsets.ModelViewSet):
             "target_department", "target_organization"
         )
 
-        now = timezone.now()
-        total       = tasks.count()
-        completed   = tasks.filter(status__in=["APPROVED", "CLOSED"]).count()
-        overdue_done = tasks.filter(
-            status__in=["APPROVED", "CLOSED"],
-            is_overdue=True,
-        ).count()
-        overdue_pending = tasks.filter(
-            is_overdue=True,
-        ).exclude(status__in=["APPROVED", "CLOSED"]).count()
+        total      = tasks.count()
+        completed  = tasks.filter(status__in=["APPROVED", "CLOSED"]).count()
+
+        # Kechikib bajarilgan: kechikkan (is_overdue) lekin ijrosi yuklangan
+        late_done  = tasks.filter(is_overdue=True, submitted_at__isnull=False).count()
+
+        # Muddati o'tgan: kechikkan va ijrosi hali yuklanmagan
+        overdue_pending = tasks.filter(is_overdue=True, submitted_at__isnull=True).count()
 
         # Bo'limlar bo'yicha statistika
         dept_qs = (
@@ -792,8 +797,18 @@ class MeetingViewSet(viewsets.ModelViewSet):
             .values("target_department__id", "target_department__name", "target_organization__name")
             .annotate(
                 total=Count("id"),
-                done=Count(Case(When(status__in=["APPROVED", "CLOSED"], then=1), output_field=IntegerField())),
-                overdue=Count(Case(When(is_overdue=True, then=1), output_field=IntegerField())),
+                done=Count(Case(
+                    When(status__in=["APPROVED", "CLOSED"], then=1),
+                    output_field=IntegerField(),
+                )),
+                late_done=Count(Case(
+                    When(is_overdue=True, submitted_at__isnull=False, then=1),
+                    output_field=IntegerField(),
+                )),
+                overdue_pending=Count(Case(
+                    When(is_overdue=True, submitted_at__isnull=True, then=1),
+                    output_field=IntegerField(),
+                )),
             )
             .order_by("-total")
         )
@@ -802,18 +817,19 @@ class MeetingViewSet(viewsets.ModelViewSet):
         for row in dept_qs:
             dept_name = row["target_department__name"] or row["target_organization__name"] or "Noma'lum"
             by_department.append({
-                "name":    dept_name,
-                "total":   row["total"],
-                "done":    row["done"],
-                "overdue": row["overdue"],
+                "name":            dept_name,
+                "total":           row["total"],
+                "done":            row["done"],
+                "late_done":       row["late_done"],
+                "overdue_pending": row["overdue_pending"],
             })
 
         return Response({
-            "total":          total,
-            "completed":      completed,
-            "overdue_done":   overdue_done,
+            "total":           total,
+            "completed":       completed,
+            "late_done":       late_done,
             "overdue_pending": overdue_pending,
-            "by_department":  by_department,
+            "by_department":   by_department,
         })
 
 
