@@ -841,11 +841,19 @@ class MeetingViewSet(viewsets.ModelViewSet):
             role = (
                 a.user.role_assignments
                 .filter(is_active=True)
+                .select_related("chair", "department")
                 .order_by("-is_institute_leader", "-is_branch_leader", "-is_head")
                 .first()
             )
-            pos = (role.custom_role_name or role.get_role_display()) if role else None
-            position_map[a.user_id] = pos or a.user.full_name
+            if role and role.chair:
+                name = role.chair.name
+            elif role and role.department:
+                name = role.department.name
+            elif role:
+                name = role.custom_role_name or role.get_role_display()
+            else:
+                name = a.user.full_name
+            position_map[a.user_id] = name
 
         no_unit_qs = _stat_annotation(
             base_qs.filter(department__isnull=True, chair__isnull=True).values("user_id")
