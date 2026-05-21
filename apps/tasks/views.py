@@ -846,7 +846,7 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 and t.status not in ("APPROVED", "CLOSED")
             )
             if name not in dept_merged:
-                dept_merged[name] = {"name": name, "total": 0, "done": 0, "late_done": 0, "overdue_pending": 0}
+                dept_merged[name] = {"name": name, "total": 0, "done": 0, "late_done": 0, "overdue_pending": 0, "tasks": []}
             dept_merged[name]["total"] += 1
             if is_done:
                 dept_merged[name]["done"] += 1
@@ -854,43 +854,56 @@ class MeetingViewSet(viewsets.ModelViewSet):
                 dept_merged[name]["late_done"] += 1
             if is_overdue_p:
                 dept_merged[name]["overdue_pending"] += 1
+            dept_merged[name]["tasks"].append({
+                "id":       t.id,
+                "title":    t.title,
+                "status":   t.status,
+                "deadline": t.deadline.strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+                "assignee": a.user.full_name,
+            })
 
         by_department = sorted(dept_merged.values(), key=lambda x: -x["total"])
 
         # ── Ijrochilar tashkiloti bo'yicha ────────────────────────────────────
-        assignee_org_qs = (
+        org_all_assignees = (
             TaskAssignee.objects
             .filter(task__meeting=meeting)
-            .values("organization__id", "organization__name")
-            .annotate(
-                total=Count("task_id", distinct=True),
-                done=Count(Case(
-                    When(task__status__in=["APPROVED", "CLOSED"], then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                late_done=Count(Case(
-                    When(task__submitted_at__isnull=False, task__deadline__isnull=False,
-                         task__submitted_at__gt=F("task__deadline"), then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-                overdue_pending=Count(Case(
-                    When(task__deadline__isnull=False, task__deadline__lt=now,
-                         task__submitted_at__isnull=True, then=F("task_id")),
-                    output_field=IntegerField(),
-                )),
-            )
-            .order_by("-total")
+            .select_related("task", "organization", "user")
+            .order_by("task_id", "-is_primary", "-is_leader", "id")
         )
+        org_task_assignee: dict[int, "TaskAssignee"] = {}
+        for a in org_all_assignees:
+            if a.task_id not in org_task_assignee:
+                org_task_assignee[a.task_id] = a
 
-        by_organization = []
-        for row in assignee_org_qs:
-            by_organization.append({
-                "name":            row["organization__name"] or "Noma'lum",
-                "total":           row["total"],
-                "done":            row["done"],
-                "late_done":       row["late_done"],
-                "overdue_pending": row["overdue_pending"],
+        org_merged: dict[str, dict] = {}
+        for task_id, a in org_task_assignee.items():
+            t = a.task
+            name = a.organization.name if a.organization_id else "Noma'lum"
+            is_done = t.status in ("APPROVED", "CLOSED")
+            is_late = (t.submitted_at and t.deadline and t.submitted_at > t.deadline)
+            is_overdue_p = (
+                t.deadline and t.deadline < now and not t.submitted_at
+                and t.status not in ("APPROVED", "CLOSED")
+            )
+            if name not in org_merged:
+                org_merged[name] = {"name": name, "total": 0, "done": 0, "late_done": 0, "overdue_pending": 0, "tasks": []}
+            org_merged[name]["total"] += 1
+            if is_done:
+                org_merged[name]["done"] += 1
+            if is_late:
+                org_merged[name]["late_done"] += 1
+            if is_overdue_p:
+                org_merged[name]["overdue_pending"] += 1
+            org_merged[name]["tasks"].append({
+                "id":       t.id,
+                "title":    t.title,
+                "status":   t.status,
+                "deadline": t.deadline.strftime("%Y-%m-%d %H:%M") if t.deadline else None,
+                "assignee": a.user.full_name,
             })
+
+        by_organization = sorted(org_merged.values(), key=lambda x: -x["total"])
 
         def _assignee_label(task):
             a = task.assignees.select_related("department", "chair", "user").first()
