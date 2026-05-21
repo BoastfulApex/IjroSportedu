@@ -772,17 +772,16 @@ class MeetingViewSet(viewsets.ModelViewSet):
 
         tasks = Task.objects.filter(meeting__isnull=False)
 
-        in_progress_statuses = ["CREATED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "SUBMITTED", "REVIEWING", "RETURNED"]
-        done_statuses         = ["APPROVED", "CLOSED"]
+        done_statuses = ["APPROVED", "CLOSED"]
 
-        total      = tasks.count()
-        in_progress = tasks.filter(status__in=in_progress_statuses).count()
-        completed  = tasks.filter(status__in=done_statuses).count()
-        overdue    = tasks.filter(
+        total     = tasks.count()
+        completed = tasks.filter(status__in=done_statuses).count()
+        overdue   = tasks.filter(
             deadline__isnull=False,
             deadline__lt=now,
-            submitted_at__isnull=True,
         ).exclude(status__in=done_statuses).count()
+        # Jarayonda = bajarilmagan va muddati hali o'tmagan
+        in_progress = total - completed - overdue
         late_done  = tasks.filter(
             submitted_at__isnull=False,
             deadline__isnull=False,
@@ -826,11 +825,10 @@ class MeetingViewSet(viewsets.ModelViewSet):
             submitted_at__gt=F("deadline"),
         ).count()
 
-        # Muddati o'tgan: deadline o'tgan, hali topshirilmagan
+        # Muddati o'tgan: deadline o'tgan va hali APPROVED/CLOSED emas
         overdue_pending = tasks.filter(
             deadline__isnull=False,
             deadline__lt=now,
-            submitted_at__isnull=True,
         ).exclude(status__in=["APPROVED", "CLOSED"]).count()
 
         # Har bir task uchun birinchi primary assignee ni olib, uning bo'lim/kafedra/lavozimini aniqlaymiz
