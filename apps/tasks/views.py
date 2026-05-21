@@ -4,7 +4,7 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.shortcuts import get_object_or_404
-from django.db.models import Q, Count, Case, When, IntegerField
+from django.db.models import Q, Count, Case, When, IntegerField, F
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.filters import SearchFilter, OrderingFilter
@@ -763,6 +763,39 @@ class MeetingViewSet(viewsets.ModelViewSet):
         item.save(update_fields=["recurring_item"])
 
         return Response(MeetingAgendaItemSerializer(item).data)
+
+    @action(detail=False, methods=["get"], url_path="aggregate-stats")
+    def aggregate_stats(self, request):
+        """Barcha majlis topshiriqlari bo'yicha umumiy statistika."""
+        from django.utils import timezone as tz
+        now = tz.now()
+
+        tasks = Task.objects.filter(meeting__isnull=False)
+
+        in_progress_statuses = ["CREATED", "ASSIGNED", "ACCEPTED", "IN_PROGRESS", "SUBMITTED", "REVIEWING", "RETURNED"]
+        done_statuses         = ["APPROVED", "CLOSED"]
+
+        total      = tasks.count()
+        in_progress = tasks.filter(status__in=in_progress_statuses).count()
+        completed  = tasks.filter(status__in=done_statuses).count()
+        overdue    = tasks.filter(
+            deadline__isnull=False,
+            deadline__lt=now,
+            submitted_at__isnull=True,
+        ).exclude(status__in=done_statuses).count()
+        late_done  = tasks.filter(
+            submitted_at__isnull=False,
+            deadline__isnull=False,
+            submitted_at__gt=F("deadline"),
+        ).count()
+
+        return Response({
+            "total":       total,
+            "in_progress": in_progress,
+            "completed":   completed,
+            "overdue":     overdue,
+            "late_done":   late_done,
+        })
 
     @action(detail=True, methods=["get"], url_path="statistics")
     def statistics(self, request, pk=None):
