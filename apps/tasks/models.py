@@ -22,10 +22,10 @@ class Task(models.Model):
         LOW = "LOW", "Past"
 
     class TaskType(models.TextChoices):
-        REKTORAT   = "REKTORAT",   "Rektorat topshirig'i"
-        ILMIY      = "ILMIY",      "Ilmiy kengash topshirig'i"
-        FUNKSIONAL = "FUNKSIONAL", "Funksional topshiriq"
-        QOSHIMCHA  = "QOSHIMCHA",  "Qo'shimcha topshiriq"
+        REKTORAT      = "REKTORAT",      "Rektorat topshirig'i"
+        FUNKSIONAL    = "FUNKSIONAL",    "Funksional topshiriq"
+        QOSHIMCHA     = "QOSHIMCHA",     "Qo'shimcha topshiriq"
+        ILMIY_KENGASH = "ILMIY_KENGASH", "Ilmiy kengash topshirig'i"
 
     VALID_TRANSITIONS = {
         # To'liq zanjir:
@@ -222,7 +222,6 @@ class Meeting(models.Model):
 
     class MeetingType(models.TextChoices):
         REKTORAT = "REKTORAT", "Rektorat"
-        ILMIY    = "ILMIY",    "Ilmiy kengash"
 
     name         = models.CharField(max_length=300, verbose_name="Majlis nomi")
     meeting_type = models.CharField(max_length=20, choices=MeetingType.choices, verbose_name="Majlis turi")

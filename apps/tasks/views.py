@@ -618,7 +618,6 @@ class MeetingViewSet(viewsets.ModelViewSet):
             # Task type majlis turidan olinadi
             task_type_map = {
                 Meeting.MeetingType.REKTORAT: Task.TaskType.REKTORAT,
-                Meeting.MeetingType.ILMIY:    Task.TaskType.ILMIY,
             }
             task_type = task_type_map.get(meeting.meeting_type, Task.TaskType.FUNKSIONAL)
 

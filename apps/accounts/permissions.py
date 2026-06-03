@@ -27,7 +27,7 @@ class IsInstituteLeader(BasePermission):
 
 
 class CanViewAllReports(BasePermission):
-    """TASK_CONTROLLER, INSTITUTE_LEADER, BRANCH_LEADER yoki SUPER_ADMIN"""
+    """TASK_CONTROLLER, INSTITUTE_LEADER, BRANCH_LEADER, SCIENTIFIC_COUNCIL_SECRETARY yoki SUPER_ADMIN"""
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
@@ -36,6 +36,7 @@ class CanViewAllReports(BasePermission):
             or request.user.is_task_controller()
             or request.user.is_institute_leader()
             or request.user.is_branch_leader()
+            or request.user.is_scientific_council_secretary()
         )
 
 
@@ -53,6 +54,26 @@ class CanCreateTask(BasePermission):
             models.Q(can_create_tasks=True)
             | models.Q(department__can_create_tasks=True)
             | models.Q(department__dept_type="TASK_CONTROL")
+        ).exists()
+
+
+class CanCreateOrder(BasePermission):
+    """ORDER_CONTROL bo'lim xodimlari, TASK_CONTROL, SUPER_ADMIN va Ilmiy kengash kotibi"""
+    def has_permission(self, request, view):
+        if not (request.user and request.user.is_authenticated):
+            return False
+        if request.user.is_super_admin() or request.user.is_task_controller():
+            return True
+        if request.user.is_scientific_council_secretary():
+            return True
+        return UserRoleAssignment.objects.filter(
+            user=request.user,
+            is_active=True,
+        ).filter(
+            models.Q(department__dept_type="ORDER_CONTROL")
+            | models.Q(department__dept_type="TASK_CONTROL")
+            | models.Q(can_create_tasks=True)
+            | models.Q(department__can_create_tasks=True)
         ).exists()
 
 
@@ -78,5 +99,9 @@ class IsTaskRelated(BasePermission):
         if request.user.is_super_admin() or request.user.is_task_controller():
             return True
         if obj.creator == request.user:
+            return True
+        # Ilmiy kengash kotibi IK topshiriqlarini ko'ra va tahrir qila oladi
+        if (request.user.is_scientific_council_secretary()
+                and obj.task_type == "ILMIY_KENGASH"):
             return True
         return obj.assignees.filter(user=request.user).exists()

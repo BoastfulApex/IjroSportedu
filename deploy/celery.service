@@ -1,14 +1,14 @@
 [Unit]
-Description=IjroSportedu Celery Worker
+Description=BuyruqSportedu Celery Worker
 After=network.target redis.service postgresql.service
 Requires=redis.service
 
 [Service]
-User=root
-Group=root
-WorkingDirectory=/home/ubuntu/IjroSportedu/IjroSportedu
-EnvironmentFile=/home/ubuntu/IjroSportedu/IjroSportedu/.env
-ExecStart=/home/ubuntu/IjroSportedu/IjroSportedu/venv/bin/celery \
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/buyruqsportedu/backend
+EnvironmentFile=/var/www/buyruqsportedu/backend/.env
+ExecStart=/var/www/buyruqsportedu/backend/venv/bin/celery \
     -A config worker \
     --loglevel=info \
     --concurrency=4 \

@@ -63,6 +63,11 @@ class User(AbstractBaseUser, PermissionsMixin):
             role=UserRoleAssignment.Role.BRANCH_LEADER, is_active=True
         ).exists()
 
+    def is_scientific_council_secretary(self):
+        return self.role_assignments.filter(
+            role=UserRoleAssignment.Role.SCIENTIFIC_COUNCIL_SECRETARY, is_active=True
+        ).exists()
+
     def get_report_org_ids(self):
         """
         Foydalanuvchi ko'ra oladigan tashkilot ID lari.
@@ -88,6 +93,7 @@ class UserRoleAssignment(models.Model):
         DEPT_HEAD = "DEPT_HEAD", "Bo'lim Boshlig'i"
         CHAIR_HEAD = "CHAIR_HEAD", "Kafedra Mudiri"
         TASK_CONTROLLER = "TASK_CONTROLLER", "Topshiriq Nazoratchi"
+        SCIENTIFIC_COUNCIL_SECRETARY = "SCIENTIFIC_COUNCIL_SECRETARY", "Ilmiy kengash kotibi"
         EMPLOYEE = "EMPLOYEE", "Xodim"
 
     user = models.ForeignKey(

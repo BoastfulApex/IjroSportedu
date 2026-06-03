@@ -16,7 +16,11 @@ pip install -r requirements/production.txt
 pip install google-auth
 
 echo "=== 2. .env sozlash ==="
-cp .env.production .env
+# .env allaqachon serverga ko'chirilgan bo'lishi kerak (scp orqali)
+if [ ! -f ".env" ]; then
+  echo "XATO: .env fayli topilmadi! Ko'chirish: scp .env user@server:/var/www/buyruqsportedu/backend/.env"
+  exit 1
+fi
 
 echo "=== 3. Migrate va static fayllar ==="
 python manage.py migrate --noinput
@@ -29,11 +33,14 @@ chown -R www-data:www-data /var/log/buyruqsportedu
 chown -R www-data:www-data /var/run/buyruqsportedu
 chown -R www-data:www-data $BACKEND_DIR
 
-echo "=== 5. Frontend — build ==="
-cd $FRONTEND_DIR
-npm ci
-npm run build
+echo "=== 5. Frontend — tayyor dist fayllarini tekshirish ==="
+if [ ! -f "$FRONTEND_DIR/index.html" ]; then
+  echo "XATO: $FRONTEND_DIR/index.html topilmadi!"
+  echo "Ko'chirish: scp -r dist/* user@server:/var/www/buyruqsportedu/frontend/"
+  exit 1
+fi
 chown -R www-data:www-data $FRONTEND_DIR
+echo "Frontend tayyor: $FRONTEND_DIR"
 
 echo "=== 6. Systemd service ==="
 cp $BACKEND_DIR/deploy/buyruqsportedu.service /etc/systemd/system/

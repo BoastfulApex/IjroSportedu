@@ -40,8 +40,9 @@ class Organization(models.Model):
 
 class Department(models.Model):
     class DeptType(models.TextChoices):
-        REGULAR = "REGULAR", "Oddiy Bo'lim"
-        TASK_CONTROL = "TASK_CONTROL", "Topshiriqlar Bo'limi"
+        REGULAR       = "REGULAR",       "Oddiy Bo'lim"
+        TASK_CONTROL  = "TASK_CONTROL",  "Topshiriqlar Bo'limi"
+        ORDER_CONTROL = "ORDER_CONTROL", "Buyruqlar Bo'limi"
 
     name = models.CharField(max_length=255, db_index=True)
     organization = models.ForeignKey(
@@ -67,6 +68,9 @@ class Department(models.Model):
         if self.dept_type == self.DeptType.TASK_CONTROL:
             self.can_create_tasks = True
             self.can_assign_cross_branch = True
+        if self.dept_type == self.DeptType.ORDER_CONTROL:
+            self.can_create_tasks = False
+            self.can_assign_cross_branch = False
         super().save(*args, **kwargs)
 
 

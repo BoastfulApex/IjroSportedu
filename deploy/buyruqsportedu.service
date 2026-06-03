@@ -4,10 +4,10 @@ After=network.target postgresql.service redis.service
 
 [Service]
 Type=notify
-User=www-data
-Group=www-data
-WorkingDirectory=/var/www/buyruqsportedu/backend
-ExecStart=/var/www/buyruqsportedu/backend/venv/bin/gunicorn \
+User=user
+Group=user
+WorkingDirectory=/home/user/IjroSportedu/IjroSportedu
+ExecStart=/home/user/IjroSportedu/IjroSportedu/venv/bin/gunicorn \
     --config gunicorn.conf.py \
     config.wsgi:application
 ExecReload=/bin/kill -s HUP $MAINPID
