@@ -305,10 +305,13 @@ class OrderViewSet(viewsets.ModelViewSet):
             if item.task:
                 continue  # allaqachon yaratilgan
 
-            deadline_raw   = payload.get("deadline")
+            deadline_raw = payload.get("deadline")
             if deadline_raw:
                 from django.utils.dateparse import parse_datetime
+                from django.utils import timezone as tz
                 deadline = parse_datetime(deadline_raw)
+                if deadline and tz.is_naive(deadline):
+                    deadline = tz.make_aware(deadline)
             else:
                 deadline = None
             priority       = payload.get("priority", Task.Priority.MEDIUM)

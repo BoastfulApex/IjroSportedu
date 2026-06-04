@@ -117,6 +117,9 @@ class Task(models.Model):
     def check_overdue(self):
         if not self.deadline:
             return False
+        deadline = self.deadline
+        if timezone.is_naive(deadline):
+            deadline = timezone.make_aware(deadline)
         active_statuses = {
             self.Status.CREATED, self.Status.ASSIGNED,
             self.Status.ACCEPTED, self.Status.IN_PROGRESS,
@@ -126,9 +129,12 @@ class Task(models.Model):
             self.Status.APPROVED, self.Status.RETURNED, self.Status.CLOSED,
         }
         if self.status in active_statuses:
-            return timezone.now() > self.deadline
+            return timezone.now() > deadline
         if self.status in submitted_statuses and self.submitted_at:
-            return self.submitted_at > self.deadline
+            submitted_at = self.submitted_at
+            if timezone.is_naive(submitted_at):
+                submitted_at = timezone.make_aware(submitted_at)
+            return submitted_at > deadline
         return False
 
     def can_transition_to(self, new_status):
