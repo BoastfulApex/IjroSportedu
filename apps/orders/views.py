@@ -8,7 +8,7 @@ from django.utils import timezone
 from apps.tasks.models import Task, TaskAssignee
 from apps.accounts.permissions import CanCreateTask, CanCreateOrder
 from apps.accounts.models import UserRoleAssignment
-from .models import Order, OrderItem, OrderItemApprover
+from .models import Order, OrderItem, OrderItemApprover, OrderAttachment, OrderItemAcknowledgment
 from .serializers import (
     OrderSerializer, OrderListSerializer,
     OrderItemSerializer, OrderItemCreateSerializer,
@@ -23,8 +23,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        # Kelishuvchilar buyruqni ko'rish va Roziman bosish uchun faqat login kerak
-        if self.action in ["retrieve", "approve_item"]:
+        # Oddiy xodimlar ham ro'yxat va ko'rish uchun faqat login kerak
+        if self.action in ["retrieve", "approve_item", "list"]:
             return [IsAuthenticated()]
         return [IsAuthenticated(), CanCreateOrder()]
 
@@ -35,6 +35,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             "items__task__assignees__department",
             "items__task__assignees__chair",
             "items__approvers__user",
+            "items__acknowledgments__user",
+            "attachments__uploaded_by",
         ).select_related("created_by")
         user = self.request.user
         if not user.is_authenticated:
@@ -56,8 +58,12 @@ class OrderViewSet(viewsets.ModelViewSet):
         ).exists()
         if has_order_perm:
             return qs
-        # Faqat kelishuvchi sifatida qo'shilgan buyruqlarni ko'radi
-        return qs.filter(items__approvers__user=user).distinct()
+        # Xodim: o'ziga biriktirilgan (mas'ul yoki task ijrochi) yoki kelishuvchi
+        return qs.filter(
+            Q(items__responsible=user) |
+            Q(items__task__assignees__user=user) |
+            Q(items__approvers__user=user)
+        ).distinct()
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -67,6 +73,21 @@ class OrderViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(created_by=self.request.user)
 
+    def retrieve(self, request, *args, **kwargs):
+        """Buyruqni ochganda ijrochiga 'viewed_at' avtomatik belgilanadi."""
+        instance = self.get_object()
+        user = request.user
+        now = timezone.now()
+        # Faqat IJRO bandlari uchun, task assignee bo'lsa
+        for item in instance.items.filter(item_type=OrderItem.ItemType.IJRO, task__isnull=False):
+            if item.task.assignees.filter(user=user).exists():
+                OrderItemAcknowledgment.objects.update_or_create(
+                    item=item, user=user,
+                    defaults={"viewed_at": now},
+                )
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     # ── Bandlar ────────────────────────────────────────────────────
     @action(detail=True, methods=["get", "post"], url_path="items")
     def items(self, request, pk=None):
@@ -74,6 +95,9 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         if request.method == "GET":
             return Response(OrderItemSerializer(order.items.all(), many=True).data)
+
+        if not CanCreateOrder().has_permission(request, self):
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
 
         if order.is_confirmed:
             return Response({"detail": "Buyruq tasdiqlangan, band qo'shib bo'lmaydi"}, status=400)
@@ -103,7 +127,7 @@ class OrderViewSet(viewsets.ModelViewSet):
         item = serializer.save()
         return Response(OrderItemSerializer(item).data)
 
-    # ── Buyruq hujjatini yuklash ───────────────────────────────────
+    # ── Buyruq ilovalarini yuklash ─────────────────────────────────
     @action(detail=True, methods=["post"], url_path="upload-file",
             parser_classes=[MultiPartParser, FormParser])
     def upload_file(self, request, pk=None):
@@ -111,20 +135,28 @@ class OrderViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "Fayl tanlanmagan"}, status=400)
-        if order.file:
-            order.file.delete(save=False)
-        order.file = file
-        order.save(update_fields=["file"])
-        return Response(OrderSerializer(order, context={"request": request}).data)
+        att = OrderAttachment.objects.create(
+            order=order,
+            file=file,
+            original_name=file.name,
+            uploaded_by=request.user,
+        )
+        from .serializers import OrderAttachmentSerializer
+        return Response(
+            OrderAttachmentSerializer(att, context={"request": request}).data,
+            status=201,
+        )
 
-    @action(detail=True, methods=["delete"], url_path="delete-file")
-    def delete_file(self, request, pk=None):
+    @action(detail=True, methods=["delete"], url_path=r"attachments/(?P<att_id>\d+)")
+    def delete_attachment(self, request, pk=None, att_id=None):
         order = self.get_object()
-        if order.file:
-            order.file.delete(save=False)
-            order.file = None
-            order.save(update_fields=["file"])
-        return Response(OrderSerializer(order, context={"request": request}).data)
+        try:
+            att = order.attachments.get(id=att_id)
+        except OrderAttachment.DoesNotExist:
+            return Response({"detail": "Ilova topilmadi"}, status=404)
+        att.file.delete(save=False)
+        att.delete()
+        return Response(status=204)
 
     # ── Excel dan bandlarni yuklash ────────────────────────────────
     @action(detail=True, methods=["post"], url_path="upload-excel",
@@ -351,6 +383,34 @@ class OrderViewSet(viewsets.ModelViewSet):
                 "order": OrderSerializer(order, context={"request": request}).data,
             }
         )
+
+    # ── Ijrochi "Qabul qilish" tugmasi ────────────────────────────
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/accept")
+    def accept_item(self, request, pk=None, item_id=None):
+        order = self.get_object()
+        try:
+            item = order.items.get(id=item_id)
+        except OrderItem.DoesNotExist:
+            return Response({"detail": "Band topilmadi"}, status=404)
+
+        if item.item_type != OrderItem.ItemType.IJRO:
+            return Response({"detail": "Bu band ijro uchun emas"}, status=400)
+
+        if not item.task or not item.task.assignees.filter(user=request.user).exists():
+            return Response({"detail": "Siz bu bandning ijrochisi emassiz"}, status=403)
+
+        now = timezone.now()
+        ack, _ = OrderItemAcknowledgment.objects.get_or_create(
+            item=item, user=request.user,
+            defaults={"viewed_at": now},
+        )
+        if ack.accepted_at:
+            return Response({"detail": "Allaqachon qabul qilgansiz"}, status=400)
+        ack.accepted_at = now
+        if not ack.viewed_at:
+            ack.viewed_at = now
+        ack.save(update_fields=["accepted_at", "viewed_at"])
+        return Response(OrderItemSerializer(item, context={"request": request}).data)
 
     # ── Kelishuvchi "Roziman" tugmasi ──────────────────────────────
     @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/approve")

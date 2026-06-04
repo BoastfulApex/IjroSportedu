@@ -27,11 +27,6 @@ class Order(models.Model):
         null=True,
         related_name="created_orders",
     )
-    file         = models.FileField(
-        upload_to="orders/files/",
-        blank=True, null=True,
-        verbose_name="Buyruq hujjati",
-    )
     created_at   = models.DateTimeField(auto_now_add=True)
     is_confirmed = models.BooleanField(default=False, verbose_name="Topshiriqlar yaratilganmi")
 
@@ -107,6 +102,50 @@ class OrderItemApprover(models.Model):
     class Meta:
         verbose_name = "Kelishuvchi"
         verbose_name_plural = "Kelishuvchilar"
+        unique_together = [["item", "user"]]
+
+    def __str__(self):
+        return f"{self.item} — {self.user.full_name}"
+
+
+class OrderAttachment(models.Model):
+    """Buyruq ilovasi — bir buyruqda bir nechta fayl bo'lishi mumkin."""
+
+    order       = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="attachments")
+    file        = models.FileField(upload_to="orders/attachments/", verbose_name="Fayl")
+    original_name = models.CharField(max_length=255, blank=True, verbose_name="Asl fayl nomi")
+    uploaded_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="uploaded_order_attachments",
+    )
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Buyruq ilovasi"
+        verbose_name_plural = "Buyruq ilovalari"
+        ordering = ["uploaded_at"]
+
+    def __str__(self):
+        return f"{self.order} — {self.original_name or self.file.name}"
+
+
+class OrderItemAcknowledgment(models.Model):
+    """Buyruq bandi ijrochisining ko'rgan/qabul qilgan holati."""
+
+    item        = models.ForeignKey(OrderItem, on_delete=models.CASCADE, related_name="acknowledgments")
+    user        = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="order_item_acknowledgments",
+    )
+    viewed_at   = models.DateTimeField(null=True, blank=True, verbose_name="Ko'rgan vaqti")
+    accepted_at = models.DateTimeField(null=True, blank=True, verbose_name="Qabul qilgan vaqti")
+
+    class Meta:
+        verbose_name = "Ko'rish/Qabul holati"
+        verbose_name_plural = "Ko'rish/Qabul holatlari"
         unique_together = [["item", "user"]]
 
     def __str__(self):
