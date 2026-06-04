@@ -305,7 +305,12 @@ class OrderViewSet(viewsets.ModelViewSet):
             if item.task:
                 continue  # allaqachon yaratilgan
 
-            deadline       = payload.get("deadline")
+            deadline_raw   = payload.get("deadline")
+            if deadline_raw:
+                from django.utils.dateparse import parse_datetime
+                deadline = parse_datetime(deadline_raw)
+            else:
+                deadline = None
             priority       = payload.get("priority", Task.Priority.MEDIUM)
             target_org_id  = payload.get("target_organization")
             target_dept_id = payload.get("target_department")
