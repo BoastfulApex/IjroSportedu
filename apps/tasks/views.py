@@ -217,6 +217,21 @@ class TaskViewSet(viewsets.ModelViewSet):
         if comment_text:
             TaskComment.objects.create(task=task, author=request.user, content=comment_text)
 
+        # Buyruq bandi bilan bog'liq bo'lsa — acknowledgment yangilash
+        if new_status == Task.Status.ACCEPTED:
+            try:
+                from apps.orders.models import OrderItem, OrderItemAcknowledgment
+                order_item = OrderItem.objects.filter(task=task).first()
+                if order_item:
+                    now = tz.now()
+                    OrderItemAcknowledgment.objects.update_or_create(
+                        item=order_item,
+                        user=request.user,
+                        defaults={"viewed_at": now, "accepted_at": now},
+                    )
+            except Exception:
+                pass
+
         # Trigger notification
         try:
             from apps.notifications.tasks import send_status_change_notification
