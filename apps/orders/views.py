@@ -28,6 +28,11 @@ class OrderViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated()]
         return [IsAuthenticated(), CanCreateOrder()]
 
+    def destroy(self, request, *args, **kwargs):
+        if not request.user.is_super_admin():
+            return Response({"detail": "Faqat super admin o'chira oladi"}, status=403)
+        return super().destroy(request, *args, **kwargs)
+
     def get_queryset(self):
         from django.db.models import Q
         qs = Order.objects.prefetch_related(
