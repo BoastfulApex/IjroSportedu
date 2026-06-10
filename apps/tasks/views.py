@@ -156,6 +156,25 @@ class TaskViewSet(viewsets.ModelViewSet):
             return [IsAuthenticated(), CanCreateTask()]
         return [IsAuthenticated()]
 
+    def retrieve(self, request, *args, **kwargs):
+        """Task ochilganda, ijrochi bo'lsa OrderItemAcknowledgment.viewed_at ni o'rnat."""
+        task = self.get_object()
+        user = request.user
+        if task.assignees.filter(user=user).exists():
+            try:
+                from apps.orders.models import OrderItem, OrderItemAcknowledgment
+                order_item = OrderItem.objects.filter(task=task).first()
+                if order_item:
+                    OrderItemAcknowledgment.objects.update_or_create(
+                        item=order_item,
+                        user=user,
+                        defaults={"viewed_at": timezone.now()},
+                    )
+            except Exception:
+                pass
+        serializer = self.get_serializer(task)
+        return Response(serializer.data)
+
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_super_admin():
             return Response({"detail": "Faqat super admin topshiriqni o'chira oladi."}, status=403)
