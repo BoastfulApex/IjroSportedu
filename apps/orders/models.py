@@ -45,6 +45,7 @@ class OrderItem(models.Model):
     class ItemType(models.TextChoices):
         IJRO      = "IJRO",      "Ijro uchun"
         KELISHISH = "KELISHISH", "Kelishish uchun"
+        MALUMOT   = "MALUMOT",   "Ma'lumot uchun"
 
     order       = models.ForeignKey(Order, on_delete=models.CASCADE, related_name="items")
     band_number = models.PositiveIntegerField(verbose_name="Band raqami")

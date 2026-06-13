@@ -83,8 +83,11 @@ class OrderViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         user = request.user
         now = timezone.now()
-        # Faqat IJRO bandlari uchun, task assignee bo'lsa
-        for item in instance.items.filter(item_type=OrderItem.ItemType.IJRO, task__isnull=False):
+        # IJRO va MALUMOT bandlari uchun, task assignee bo'lsa
+        for item in instance.items.filter(
+            item_type__in=[OrderItem.ItemType.IJRO, OrderItem.ItemType.MALUMOT],
+            task__isnull=False
+        ):
             if item.task.assignees.filter(user=user).exists():
                 OrderItemAcknowledgment.objects.update_or_create(
                     item=item, user=user,
@@ -285,10 +288,10 @@ class OrderViewSet(viewsets.ModelViewSet):
                 errors.append(f"Band #{item_id} topilmadi")
                 continue
 
-            # ── KELISHISH bandi ──────────────────────────────────────
+            # ── KELISHISH bandi (eski, orqaga moslik) ───────────────
             if item.item_type == OrderItem.ItemType.KELISHISH:
                 if item.approvers.exists():
-                    continue  # allaqachon belgilangan
+                    continue
                 approvers_data = payload.get("approvers", [])
                 for a in approvers_data:
                     uid = a.get("user")
@@ -306,7 +309,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 created_tasks.append(f"kelishish-{item.id}")
                 continue
 
-            # ── IJRO bandi ──────────────────────────────────────────
+            # ── IJRO va MALUMOT bandlari — task yaratiladi ───────────
             if item.task:
                 continue  # allaqachon yaratilgan
 
@@ -423,6 +426,35 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not ack.viewed_at:
             ack.viewed_at = now
         ack.save(update_fields=["accepted_at", "viewed_at"])
+        return Response(OrderItemSerializer(item, context={"request": request}).data)
+
+    # ── Ma'lumot uchun qabul qilish (task CLOSED ga o'tadi) ─────────
+    @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/accept-malumot")
+    def accept_malumot(self, request, pk=None, item_id=None):
+        order = self.get_object()
+        try:
+            item = order.items.get(id=item_id)
+        except OrderItem.DoesNotExist:
+            return Response({"detail": "Band topilmadi"}, status=404)
+
+        if item.item_type != OrderItem.ItemType.MALUMOT:
+            return Response({"detail": "Bu band ma'lumot uchun emas"}, status=400)
+
+        if not item.task or not item.task.assignees.filter(user=request.user).exists():
+            return Response({"detail": "Siz bu bandning ijrochisi emassiz"}, status=403)
+
+        if item.task.status == Task.Status.CLOSED:
+            return Response({"detail": "Allaqachon yopilgan"}, status=400)
+
+        now = timezone.now()
+        item.task.status = Task.Status.CLOSED
+        item.task._actor = request.user
+        item.task.save()
+
+        OrderItemAcknowledgment.objects.update_or_create(
+            item=item, user=request.user,
+            defaults={"viewed_at": now, "accepted_at": now},
+        )
         return Response(OrderItemSerializer(item, context={"request": request}).data)
 
     # ── Kelishuvchi "Roziman" tugmasi ──────────────────────────────
