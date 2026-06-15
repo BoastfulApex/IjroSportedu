@@ -170,6 +170,34 @@ class OrderViewSet(viewsets.ModelViewSet):
         att.delete()
         return Response(status=204)
 
+    @action(detail=True, methods=["get"], url_path=r"attachments/(?P<att_id>\d+)/download",
+            permission_classes=[])
+    def download_attachment(self, request, pk=None, att_id=None):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+        from django.contrib.auth.models import AnonymousUser
+        token = request.query_params.get("token")
+        if token:
+            try:
+                auth = JWTAuthentication()
+                validated = auth.get_validated_token(token)
+                request._user = auth.get_user(validated)
+            except (InvalidToken, TokenError):
+                request._user = AnonymousUser()
+        if not (request.user and request.user.is_authenticated):
+            return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
+        order = get_object_or_404(Order, pk=pk)
+        try:
+            att = order.attachments.get(id=att_id)
+        except OrderAttachment.DoesNotExist:
+            return Response({"detail": "Ilova topilmadi"}, status=404)
+        from django.http import FileResponse
+        return FileResponse(
+            att.file.open("rb"),
+            as_attachment=True,
+            filename=att.original_name or att.file.name.split("/")[-1],
+        )
+
     # ── Excel dan bandlarni yuklash ────────────────────────────────
     @action(detail=True, methods=["post"], url_path="upload-excel",
             parser_classes=[MultiPartParser, FormParser])

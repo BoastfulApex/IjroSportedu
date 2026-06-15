@@ -434,6 +434,32 @@ class TaskViewSet(viewsets.ModelViewSet):
         att.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @action(detail=True, methods=["get"], url_path=r"attachments/(?P<att_id>\d+)/download",
+            permission_classes=[])
+    def download_attachment(self, request, pk=None, att_id=None):
+        from rest_framework_simplejwt.authentication import JWTAuthentication
+        from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
+        from django.contrib.auth.models import AnonymousUser
+        # Token header yoki query param orqali autentifikatsiya
+        token = request.query_params.get("token")
+        if token:
+            try:
+                auth = JWTAuthentication()
+                validated = auth.get_validated_token(token)
+                request._user = auth.get_user(validated)
+            except (InvalidToken, TokenError):
+                request._user = AnonymousUser()
+        if not (request.user and request.user.is_authenticated):
+            return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
+        task = get_object_or_404(Task, pk=pk)
+        att = get_object_or_404(TaskAttachment, id=att_id, task=task)
+        from django.http import FileResponse
+        return FileResponse(
+            att.file.open("rb"),
+            as_attachment=True,
+            filename=att.filename or att.file.name.split("/")[-1],
+        )
+
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request, pk=None):
         task = self.get_object()
