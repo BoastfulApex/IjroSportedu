@@ -174,30 +174,39 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path=r"attachments/(?P<att_id>\d+)/download",
             authentication_classes=[], permission_classes=[AllowAny])
     def download_attachment(self, request, pk=None, att_id=None):
+        import traceback, os
+        from django.http import HttpResponse
         from rest_framework_simplejwt.authentication import JWTAuthentication
         from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-        token = request.query_params.get("token")
-        user = None
-        if token:
-            try:
-                auth = JWTAuthentication()
-                validated = auth.get_validated_token(token)
-                user = auth.get_user(validated)
-            except (InvalidToken, TokenError):
-                pass
-        if not user or not user.is_authenticated:
-            return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
-        order = get_object_or_404(Order, pk=pk)
         try:
-            att = order.attachments.get(id=att_id)
-        except OrderAttachment.DoesNotExist:
-            return Response({"detail": "Ilova topilmadi"}, status=404)
-        from django.http import FileResponse
-        return FileResponse(
-            att.file.open("rb"),
-            as_attachment=True,
-            filename=att.original_name or att.file.name.split("/")[-1],
-        )
+            token = request.query_params.get("token")
+            user = None
+            if token:
+                try:
+                    auth = JWTAuthentication()
+                    validated = auth.get_validated_token(token)
+                    user = auth.get_user(validated)
+                except Exception:
+                    pass
+            if not user or not user.is_authenticated:
+                return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
+            order = get_object_or_404(Order, pk=pk)
+            try:
+                att = order.attachments.get(id=att_id)
+            except OrderAttachment.DoesNotExist:
+                return Response({"detail": "Ilova topilmadi"}, status=404)
+            if not att.file or not att.file.name:
+                return Response({"detail": "Fayl mavjud emas"}, status=404)
+            filename = att.original_name or os.path.basename(att.file.name)
+            content = att.file.read()
+            import mimetypes
+            mime, _ = mimetypes.guess_type(filename)
+            resp = HttpResponse(content, content_type=mime or "application/octet-stream")
+            resp["Content-Disposition"] = f'attachment; filename="{filename}"'
+            return resp
+        except Exception:
+            tb = traceback.format_exc()
+            return Response({"error": tb}, status=500)
 
     # ── Excel dan bandlarni yuklash ────────────────────────────────
     @action(detail=True, methods=["post"], url_path="upload-excel",

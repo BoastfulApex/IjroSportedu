@@ -455,11 +455,15 @@ class TaskViewSet(viewsets.ModelViewSet):
         task = get_object_or_404(Task, pk=pk)
         att = get_object_or_404(TaskAttachment, id=att_id, task=task)
         from django.http import FileResponse
-        return FileResponse(
-            att.file.open("rb"),
-            as_attachment=True,
-            filename=att.filename or att.file.name.split("/")[-1],
-        )
+        import os
+        if not att.file or not att.file.name:
+            return Response({"detail": "Fayl mavjud emas"}, status=404)
+        try:
+            file_obj = att.file.open("rb")
+        except (FileNotFoundError, OSError):
+            return Response({"detail": "Fayl diskda topilmadi"}, status=404)
+        filename = att.filename or os.path.basename(att.file.name)
+        return FileResponse(file_obj, as_attachment=True, filename=filename)
 
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request, pk=None):
