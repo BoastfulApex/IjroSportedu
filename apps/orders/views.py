@@ -48,6 +48,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             return qs.none()
         if user.is_super_admin() or user.is_task_controller():
             return qs
+        if user.is_institute_leader() or user.is_branch_leader():
+            return qs
         if user.is_scientific_council_secretary():
             return qs.filter(
                 Q(order_type=Order.OrderType.ILMIY_KENGASH) |
