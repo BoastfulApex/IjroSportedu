@@ -401,6 +401,62 @@ class OrderViewSet(viewsets.ModelViewSet):
             }
         )
 
+    # ── Barcha buyruq topshiriqlari — nazorat uchun ───────────────
+    @action(detail=False, methods=["get"], url_path="all-tasks")
+    def all_tasks(self, request):
+        """Barcha buyruq bandlari nazorati — faqat ruxsat etilgan foydalanuvchilar uchun."""
+        user = request.user
+        from django.db.models import Q
+        has_perm = (
+            user.is_super_admin() or
+            user.is_task_controller() or
+            user.is_scientific_council_secretary() or
+            UserRoleAssignment.objects.filter(
+                user=user, is_active=True,
+            ).filter(
+                Q(department__dept_type="ORDER_CONTROL") |
+                Q(department__dept_type="TASK_CONTROL") |
+                Q(can_create_tasks=True) |
+                Q(department__can_create_tasks=True)
+            ).exists()
+        )
+        if not has_perm:
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
+
+        items = OrderItem.objects.filter(
+            task__isnull=False,
+        ).select_related(
+            "order", "task",
+        ).prefetch_related(
+            "task__assignees__user",
+            "task__assignees__department",
+            "acknowledgments__user",
+        ).order_by("-order__date", "band_number")
+
+        from .serializers import OrderItemSerializer
+        return Response(OrderItemSerializer(items, many=True, context={"request": request}).data)
+
+    # ── Mening buyruq topshiriqlarim ──────────────────────────────
+    @action(detail=False, methods=["get"], url_path="my-tasks")
+    def my_tasks(self, request):
+        """Joriy foydalanuvchi ijrochi bo'lgan barcha buyruq bandlari."""
+        from apps.tasks.models import Task
+        user = request.user
+        items = OrderItem.objects.filter(
+            task__isnull=False,
+            task__assignees__user=user,
+        ).exclude(
+            task__status=Task.Status.CLOSED,
+        ).select_related(
+            "order", "task",
+        ).prefetch_related(
+            "task__assignees__user",
+            "task__assignees__department",
+            "acknowledgments",
+        ).distinct().order_by("-order__date", "band_number")
+        from .serializers import OrderItemSerializer
+        return Response(OrderItemSerializer(items, many=True, context={"request": request}).data)
+
     # ── Ijrochi "Qabul qilish" tugmasi ────────────────────────────
     @action(detail=True, methods=["post"], url_path=r"items/(?P<item_id>\d+)/accept")
     def accept_item(self, request, pk=None, item_id=None):

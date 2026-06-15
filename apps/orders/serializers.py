@@ -39,11 +39,15 @@ class OrderItemSerializer(serializers.ModelSerializer):
     task_title       = serializers.CharField(source="task.title", read_only=True)
     task_deadline    = serializers.DateTimeField(source="task.deadline", read_only=True)
     task_priority    = serializers.CharField(source="task.priority", read_only=True)
+    task_is_malumot  = serializers.BooleanField(source="task.is_malumot", read_only=True)
     task_assignees   = serializers.SerializerMethodField()
     approvers        = OrderItemApproverSerializer(many=True, read_only=True)
     acknowledgments  = OrderItemAcknowledgmentSerializer(many=True, read_only=True)
     is_created       = serializers.SerializerMethodField()
     all_approved     = serializers.SerializerMethodField()
+    order_id         = serializers.IntegerField(source="order.id", read_only=True)
+    order_number     = serializers.CharField(source="order.number", read_only=True)
+    order_title      = serializers.CharField(source="order.title", read_only=True)
 
     class Meta:
         model  = OrderItem
@@ -51,8 +55,9 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "id", "band_number", "content", "deadline", "item_type",
             "responsible", "responsible_name",
             "task_id", "task_title", "task_status", "task_deadline",
-            "task_priority", "task_assignees",
+            "task_priority", "task_is_malumot", "task_assignees",
             "approvers", "acknowledgments", "is_created", "all_approved",
+            "order_id", "order_number", "order_title",
         ]
 
     def get_is_created(self, obj):
