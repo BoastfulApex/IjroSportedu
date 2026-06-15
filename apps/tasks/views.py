@@ -152,6 +152,8 @@ class TaskViewSet(viewsets.ModelViewSet):
                 logger.error(f"TaskOrganizationTarget yaratishda xatolik: {e}, data={t}")
 
     def get_permissions(self):
+        if self.action == "download_attachment":
+            return [AllowAny()]
         if self.action == "create":
             return [IsAuthenticated(), CanCreateTask()]
         return [IsAuthenticated()]

@@ -23,7 +23,8 @@ class OrderViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser]
 
     def get_permissions(self):
-        # Oddiy xodimlar ham ro'yxat va ko'rish uchun faqat login kerak
+        if self.action == "download_attachment":
+            return [AllowAny()]
         if self.action in ["retrieve", "approve_item", "list"]:
             return [IsAuthenticated()]
         return [IsAuthenticated(), CanCreateOrder()]
