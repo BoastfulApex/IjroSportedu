@@ -51,6 +51,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     order_id                 = serializers.IntegerField(source="order.id", read_only=True)
     order_number             = serializers.CharField(source="order.number", read_only=True)
     order_title              = serializers.CharField(source="order.title", read_only=True)
+    order_type               = serializers.CharField(source="order.order_type", read_only=True)
 
     class Meta:
         model  = OrderItem
@@ -62,7 +63,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "task_creating_department", "task_target_department", "task_valid_transitions",
             "task_assignees",
             "approvers", "acknowledgments", "is_created", "all_approved",
-            "order_id", "order_number", "order_title",
+            "order_id", "order_number", "order_title", "order_type",
         ]
 
     def get_task_valid_transitions(self, obj):
