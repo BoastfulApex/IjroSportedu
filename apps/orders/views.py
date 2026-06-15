@@ -39,6 +39,8 @@ class OrderViewSet(viewsets.ModelViewSet):
             "items__task__assignees__user",
             "items__task__assignees__department",
             "items__task__assignees__chair",
+            "items__task__creating_department",
+            "items__task__target_department",
             "items__approvers__user",
             "items__acknowledgments__user",
             "attachments__uploaded_by",
@@ -429,6 +431,7 @@ class OrderViewSet(viewsets.ModelViewSet):
             task__isnull=False,
         ).select_related(
             "order", "task",
+            "task__creating_department", "task__target_department",
         ).prefetch_related(
             "task__assignees__user",
             "task__assignees__department",
