@@ -1,6 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 
@@ -171,20 +171,20 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(status=204)
 
     @action(detail=True, methods=["get"], url_path=r"attachments/(?P<att_id>\d+)/download",
-            permission_classes=[])
+            authentication_classes=[], permission_classes=[AllowAny])
     def download_attachment(self, request, pk=None, att_id=None):
         from rest_framework_simplejwt.authentication import JWTAuthentication
         from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-        from django.contrib.auth.models import AnonymousUser
         token = request.query_params.get("token")
+        user = None
         if token:
             try:
                 auth = JWTAuthentication()
                 validated = auth.get_validated_token(token)
-                request._user = auth.get_user(validated)
+                user = auth.get_user(validated)
             except (InvalidToken, TokenError):
-                request._user = AnonymousUser()
-        if not (request.user and request.user.is_authenticated):
+                pass
+        if not user or not user.is_authenticated:
             return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
         order = get_object_or_404(Order, pk=pk)
         try:
