@@ -260,6 +260,37 @@ class TaskViewSet(viewsets.ModelViewSet):
 
         return Response(TaskDetailSerializer(task, context={"request": request}).data)
 
+    @action(detail=True, methods=["post"], url_path="accept-malumot")
+    def accept_malumot(self, request, pk=None):
+        """Ma'lumot uchun qabul qilish — task to'g'ridan CLOSED ga o'tadi."""
+        task = self.get_object()
+        if not task.is_malumot:
+            return Response({"detail": "Bu topshiriq ma'lumot uchun emas"}, status=400)
+        if not task.assignees.filter(user=request.user).exists():
+            return Response({"detail": "Siz bu topshiriqning ijrochisi emassiz"}, status=403)
+        if task.status == Task.Status.CLOSED:
+            return Response({"detail": "Topshiriq allaqachon yopilgan"}, status=400)
+
+        from django.utils import timezone as tz
+        task.status = Task.Status.CLOSED
+        task._actor = request.user
+        task.save()
+
+        try:
+            from apps.orders.models import OrderItem, OrderItemAcknowledgment
+            order_item = OrderItem.objects.filter(task=task).first()
+            if order_item:
+                now = tz.now()
+                OrderItemAcknowledgment.objects.update_or_create(
+                    item=order_item,
+                    user=request.user,
+                    defaults={"viewed_at": now, "accepted_at": now},
+                )
+        except Exception:
+            pass
+
+        return Response(TaskDetailSerializer(task, context={"request": request}).data)
+
     @action(detail=True, methods=["patch"], url_path="deadline")
     def update_deadline(self, request, pk=None):
         """Topshiriq muddatini o'zgartirish (faqat task yaratuvchi / canManage)."""

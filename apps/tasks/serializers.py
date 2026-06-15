@@ -177,7 +177,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             "creator", "creator_name", "creating_department", "creating_department_name",
             "target_organization", "target_organization_name",
             "target_department", "target_department_name",
-            "deadline", "is_overdue", "created_at", "updated_at",
+            "deadline", "is_overdue", "is_malumot", "created_at", "updated_at",
             "assignees", "attachments", "org_targets", "comments_count",
             "meeting_info",
         ]

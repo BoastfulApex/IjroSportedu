@@ -359,6 +359,7 @@ class OrderViewSet(viewsets.ModelViewSet):
                 target_organization=target_org,
                 target_department=target_dept,
                 deadline=deadline or item.deadline,
+                is_malumot=(item.item_type == OrderItem.ItemType.MALUMOT),
             )
 
             for a in assignees_data:

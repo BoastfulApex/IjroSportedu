@@ -90,6 +90,7 @@ class Task(models.Model):
     deadline = models.DateTimeField(null=True, blank=True, db_index=True)
     submitted_at = models.DateTimeField(null=True, blank=True)
     is_overdue = models.BooleanField(default=False, db_index=True)
+    is_malumot = models.BooleanField(default=False, verbose_name="Ma'lumot uchun")
     meeting = models.ForeignKey(
         "Meeting",
         on_delete=models.CASCADE,
