@@ -46,13 +46,13 @@ class TaskViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        from django.db.models import Exists, OuterRef
+        from django.db.models import Subquery, OuterRef, CharField
         from apps.orders.models import OrderItem
         user = self.request.user
         qs = Task.objects.select_related(
             "creator", "creating_department__organization",
             "target_organization", "target_department",
-            "for_all_order_item",
+            "for_all_order_item__order",
         ).prefetch_related(
             "assignees__user",
             "assignees__organization",
@@ -62,7 +62,11 @@ class TaskViewSet(viewsets.ModelViewSet):
             "org_targets__department",
             "org_targets__chair",
         ).annotate(
-            has_order_item=Exists(OrderItem.objects.filter(task_id=OuterRef("pk")))
+            task_order_type=Subquery(
+                OrderItem.objects.filter(task_id=OuterRef("pk"))
+                .values("order__order_type")[:1],
+                output_field=CharField(),
+            )
         )
 
         # ?my_tasks=true — o'zi ijrochi YOKI target_department xodimi bo'lgan topshiriqlar

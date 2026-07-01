@@ -150,8 +150,11 @@ class TaskListSerializer(serializers.ModelSerializer):
     def get_task_source(self, obj):
         if obj.meeting_id:
             return "MAJLIS"
-        if getattr(obj, "has_order_item", False) or obj.for_all_order_item_id:
-            return "BUYRUQ"
+        order_type = getattr(obj, "task_order_type", None)
+        if order_type:
+            return order_type
+        if obj.for_all_order_item_id and obj.for_all_order_item_id:
+            return obj.for_all_order_item.order.order_type
         return None
 
 
