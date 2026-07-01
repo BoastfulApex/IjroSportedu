@@ -46,10 +46,13 @@ class TaskViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
+        from django.db.models import Exists, OuterRef
+        from apps.orders.models import OrderItem
         user = self.request.user
         qs = Task.objects.select_related(
             "creator", "creating_department__organization",
             "target_organization", "target_department",
+            "for_all_order_item",
         ).prefetch_related(
             "assignees__user",
             "assignees__organization",
@@ -58,6 +61,8 @@ class TaskViewSet(viewsets.ModelViewSet):
             "org_targets__organization",
             "org_targets__department",
             "org_targets__chair",
+        ).annotate(
+            has_order_item=Exists(OrderItem.objects.filter(task_id=OuterRef("pk")))
         )
 
         # ?my_tasks=true — o'zi ijrochi YOKI target_department xodimi bo'lgan topshiriqlar
@@ -161,11 +166,28 @@ class TaskViewSet(viewsets.ModelViewSet):
     def retrieve(self, request, *args, **kwargs):
         """Task ochilganda, ijrochi bo'lsa OrderItemAcknowledgment.viewed_at ni o'rnat."""
         task = self.get_object()
+        # order_info uchun kerakli related objectlarni yuklash
+        task = (
+            Task.objects
+            .select_related(
+                "creator", "creating_department", "target_organization", "target_department",
+                "order_item__order",
+                "for_all_order_item__order",
+            )
+            .prefetch_related(
+                "assignees__user", "assignees__organization", "assignees__department",
+                "attachments__uploaded_by",
+                "org_targets__organization", "org_targets__department",
+                "order_item__order__attachments",
+                "for_all_order_item__order__attachments",
+            )
+            .get(pk=task.pk)
+        )
         user = request.user
         if task.assignees.filter(user=user).exists():
             try:
                 from apps.orders.models import OrderItem, OrderItemAcknowledgment
-                order_item = OrderItem.objects.filter(task=task).first()
+                order_item = getattr(task, "order_item", None)
                 if order_item:
                     OrderItemAcknowledgment.objects.update_or_create(
                         item=order_item,

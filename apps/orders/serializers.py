@@ -52,11 +52,12 @@ class OrderItemSerializer(serializers.ModelSerializer):
     order_number             = serializers.CharField(source="order.number", read_only=True)
     order_title              = serializers.CharField(source="order.title", read_only=True)
     order_type               = serializers.CharField(source="order.order_type", read_only=True)
+    for_all_tasks            = serializers.SerializerMethodField()
 
     class Meta:
         model  = OrderItem
         fields = [
-            "id", "band_number", "content", "deadline", "item_type",
+            "id", "band_number", "content", "deadline", "item_type", "is_for_all",
             "responsible", "responsible_name",
             "task_id", "task_title", "task_status", "task_deadline",
             "task_priority", "task_is_malumot",
@@ -64,6 +65,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
             "task_assignees",
             "approvers", "acknowledgments", "is_created", "all_approved",
             "order_id", "order_number", "order_title", "order_type",
+            "for_all_tasks",
         ]
 
     def get_task_valid_transitions(self, obj):
@@ -75,6 +77,8 @@ class OrderItemSerializer(serializers.ModelSerializer):
     def get_is_created(self, obj):
         if obj.item_type == OrderItem.ItemType.KELISHISH:
             return obj.approvers.exists()
+        if obj.is_for_all:
+            return obj.for_all_tasks.exists()
         return obj.task_id is not None
 
     def get_all_approved(self, obj):
@@ -89,6 +93,24 @@ class OrderItemSerializer(serializers.ModelSerializer):
         if not obj.task_id:
             return []
         return TaskAssigneeSerializer(obj.task.assignees.all(), many=True).data
+
+    def get_for_all_tasks(self, obj):
+        if not obj.is_for_all:
+            return []
+        result = []
+        for t in obj.for_all_tasks.prefetch_related("assignees").all():
+            primary = t.assignees.filter(is_primary=True).first()
+            result.append({
+                "task_id":    t.id,
+                "status":     t.status,
+                "deadline":   t.deadline,
+                "priority":   t.priority,
+                "valid_transitions": t.VALID_TRANSITIONS.get(t.status, []),
+                "assignee_id":   primary.user_id if primary else None,
+                "assignee_name": primary.user.full_name if primary else None,
+                "department_id": primary.department_id if primary else None,
+            })
+        return result
 
 
 class OrderSerializer(serializers.ModelSerializer):

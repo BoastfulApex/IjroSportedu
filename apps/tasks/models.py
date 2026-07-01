@@ -91,6 +91,13 @@ class Task(models.Model):
     submitted_at = models.DateTimeField(null=True, blank=True)
     is_overdue = models.BooleanField(default=False, db_index=True)
     is_malumot = models.BooleanField(default=False, verbose_name="Ma'lumot uchun")
+    for_all_order_item = models.ForeignKey(
+        "orders.OrderItem",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="for_all_tasks",
+        verbose_name="Hamma uchun bandi",
+    )
     meeting = models.ForeignKey(
         "Meeting",
         on_delete=models.CASCADE,

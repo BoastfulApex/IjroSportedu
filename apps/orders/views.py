@@ -353,8 +353,15 @@ class OrderViewSet(viewsets.ModelViewSet):
                 continue
 
             # ── IJRO va MALUMOT bandlari — task yaratiladi ───────────
-            if item.task:
-                continue  # allaqachon yaratilgan
+            is_for_all = payload.get("is_for_all", False)
+
+            # Allaqachon yaratilgan bo'lsa o'tkazib yuborish
+            if is_for_all:
+                if item.for_all_tasks.exists():
+                    continue
+            else:
+                if item.task:
+                    continue
 
             deadline_raw = payload.get("deadline")
             if deadline_raw:
@@ -366,9 +373,70 @@ class OrderViewSet(viewsets.ModelViewSet):
             else:
                 deadline = None
             priority       = payload.get("priority", Task.Priority.MEDIUM)
+            assignees_data = payload.get("assignees", [])
+
+            task_type_map = {
+                Order.OrderType.ILMIY_KENGASH: Task.TaskType.ILMIY_KENGASH,
+            }
+            task_type = task_type_map.get(order.order_type, Task.TaskType.REKTORAT)
+
+            # ── HAMMA UCHUN: har bir ijrochi uchun alohida task ─────
+            if is_for_all:
+                item.is_for_all = True
+                item.save(update_fields=["is_for_all"])
+                for a in assignees_data:
+                    uid = a.get("user")
+                    if not uid:
+                        continue
+                    try:
+                        assignee_user = UserModel.objects.get(id=uid)
+                    except UserModel.DoesNotExist:
+                        continue
+                    org_id  = a.get("organization")
+                    dept_id = a.get("department")
+                    if not org_id:
+                        continue
+                    try:
+                        a_org = Organization.objects.get(id=org_id)
+                    except Organization.DoesNotExist:
+                        continue
+                    a_dept = None
+                    if dept_id:
+                        try:
+                            a_dept = Department.objects.get(id=dept_id)
+                        except Department.DoesNotExist:
+                            pass
+                    task = Task.objects.create(
+                        title=f"Buyruq №{order.number} — {item.band_number}-band: {item.content[:100]}",
+                        description=item.content,
+                        priority=priority,
+                        task_type=task_type,
+                        creator=user,
+                        creating_department=creating_dept,
+                        target_organization=a_org,
+                        target_department=a_dept,
+                        deadline=deadline or item.deadline,
+                        is_malumot=False,
+                        for_all_order_item=item,
+                    )
+                    TaskAssignee.objects.create(
+                        task=task,
+                        user=assignee_user,
+                        organization_id=org_id,
+                        department_id=dept_id,
+                        chair_id=a.get("chair"),
+                        is_primary=True,
+                        is_leader=a.get("is_leader", False),
+                        assigned_by=user,
+                    )
+                    task.status = Task.Status.ASSIGNED
+                    task.save(update_fields=["status"])
+                    created_tasks.append(task.id)
+                continue
+
+            # ── ODDIY (IJRO / MALUMOT): bitta task ──────────────────
             target_org_id  = payload.get("target_organization")
             target_dept_id = payload.get("target_department")
-            assignees_data = payload.get("assignees", [])
 
             if not target_org_id:
                 errors.append(f"Band #{item.band_number}: target_organization majburiy")
@@ -386,11 +454,6 @@ class OrderViewSet(viewsets.ModelViewSet):
                     target_dept = Department.objects.get(id=target_dept_id)
                 except Department.DoesNotExist:
                     pass
-
-            task_type_map = {
-                Order.OrderType.ILMIY_KENGASH: Task.TaskType.ILMIY_KENGASH,
-            }
-            task_type = task_type_map.get(order.order_type, Task.TaskType.REKTORAT)
 
             task = Task.objects.create(
                 title=f"Buyruq №{order.number} — {item.band_number}-band: {item.content[:100]}",
@@ -413,13 +476,14 @@ class OrderViewSet(viewsets.ModelViewSet):
                     assignee_user = UserModel.objects.get(id=uid)
                 except UserModel.DoesNotExist:
                     continue
+                is_primary = a.get("is_primary", False) if item.item_type != OrderItem.ItemType.MALUMOT else False
                 TaskAssignee.objects.create(
                     task=task,
                     user=assignee_user,
                     organization_id=a.get("organization"),
                     department_id=a.get("department"),
                     chair_id=a.get("chair"),
-                    is_primary=a.get("is_primary", False),
+                    is_primary=is_primary,
                     is_leader=a.get("is_leader", False),
                     assigned_by=user,
                 )
@@ -548,14 +612,21 @@ class OrderViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Allaqachon yopilgan"}, status=400)
 
         now = timezone.now()
-        item.task.status = Task.Status.CLOSED
-        item.task._actor = request.user
-        item.task.save()
-
         OrderItemAcknowledgment.objects.update_or_create(
             item=item, user=request.user,
             defaults={"viewed_at": now, "accepted_at": now},
         )
+
+        # Hamma ijrochi qabul qilgandagina task yopiladi
+        assignee_ids = set(item.task.assignees.values_list("user_id", flat=True))
+        accepted_ids = set(
+            item.acknowledgments.filter(accepted_at__isnull=False).values_list("user_id", flat=True)
+        )
+        if assignee_ids and assignee_ids.issubset(accepted_ids):
+            item.task.status = Task.Status.CLOSED
+            item.task._actor = request.user
+            item.task.save()
+
         return Response(OrderItemSerializer(item, context={"request": request}).data)
 
     # ── Kelishuvchi "Roziman" tugmasi ──────────────────────────────

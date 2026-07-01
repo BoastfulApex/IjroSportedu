@@ -125,7 +125,8 @@ class TaskListSerializer(serializers.ModelSerializer):
     status_display    = serializers.CharField(source="get_status_display",    read_only=True)
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
     # is_overdue — bazadagi qiymat emas, har safar real vaqtda hisoblanadi
-    is_overdue = serializers.SerializerMethodField()
+    is_overdue   = serializers.SerializerMethodField()
+    task_source  = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -137,6 +138,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             "target_department", "target_department_name",
             "deadline", "is_overdue", "created_at", "updated_at",
             "assignees_count", "assignees",
+            "task_source",
         ]
 
     def get_assignees_count(self, obj):
@@ -144,6 +146,13 @@ class TaskListSerializer(serializers.ModelSerializer):
 
     def get_is_overdue(self, obj):
         return obj.check_overdue()
+
+    def get_task_source(self, obj):
+        if obj.meeting_id:
+            return "MAJLIS"
+        if getattr(obj, "has_order_item", False) or obj.for_all_order_item_id:
+            return "BUYRUQ"
+        return None
 
 
 class TaskDetailSerializer(serializers.ModelSerializer):
@@ -167,6 +176,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     task_type_display = serializers.CharField(source="get_task_type_display", read_only=True)
     is_overdue        = serializers.SerializerMethodField()
     meeting_info      = serializers.SerializerMethodField()
+    order_info        = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -179,8 +189,37 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             "target_department", "target_department_name",
             "deadline", "is_overdue", "is_malumot", "created_at", "updated_at",
             "assignees", "attachments", "org_targets", "comments_count",
-            "meeting_info",
+            "meeting_info", "order_info",
         ]
+
+    def get_order_info(self, obj):
+        item = getattr(obj, "order_item", None)
+        if item is None:
+            item = obj.for_all_order_item
+        if item is None:
+            return None
+        order = item.order
+        request = self.context.get("request")
+        attachments = []
+        for att in order.attachments.all():
+            file_url = request.build_absolute_uri(att.file.url) if request else att.file.url
+            attachments.append({
+                "id":            att.id,
+                "original_name": att.original_name or att.file.name.split("/")[-1],
+                "file_url":      file_url,
+                "uploaded_at":   str(att.uploaded_at),
+            })
+        return {
+            "order_id":          order.id,
+            "order_number":      order.number,
+            "order_title":       order.title,
+            "order_date":        str(order.date),
+            "order_type":        order.order_type,
+            "order_type_display": order.get_order_type_display(),
+            "band_number":       item.band_number,
+            "band_content":      item.content,
+            "attachments":       attachments,
+        }
 
     def get_meeting_info(self, obj):
         if not obj.meeting_id:
@@ -235,9 +274,9 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             "id",
             "title", "description", "priority", "task_type",
             "targets",   # ← bir nechta tashkilot manzillari
-            "deadline",
+            "deadline", "status",
         ]
-        read_only_fields = ["id"]
+        read_only_fields = ["id", "status"]
 
     def validate_targets(self, value):
         if not value:

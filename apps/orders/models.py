@@ -64,6 +64,10 @@ class OrderItem(models.Model):
         related_name="order_item_responsibilities",
         verbose_name="Mas'ul ijrochi",
     )
+    is_for_all = models.BooleanField(
+        default=False,
+        verbose_name="Hamma uchun (har bir ijrochiga alohida topshiriq)",
+    )
     task = models.OneToOneField(
         "tasks.Task",
         on_delete=models.SET_NULL,
