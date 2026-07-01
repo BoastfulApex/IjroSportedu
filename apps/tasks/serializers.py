@@ -180,6 +180,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     is_overdue        = serializers.SerializerMethodField()
     meeting_info      = serializers.SerializerMethodField()
     order_info        = serializers.SerializerMethodField()
+    task_source       = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -192,8 +193,16 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             "target_department", "target_department_name",
             "deadline", "is_overdue", "is_malumot", "created_at", "updated_at",
             "assignees", "attachments", "org_targets", "comments_count",
-            "meeting_info", "order_info",
+            "meeting_info", "order_info", "task_source",
         ]
+
+    def get_task_source(self, obj):
+        if obj.meeting_id:
+            return "MAJLIS"
+        item = getattr(obj, "order_item", None) or obj.for_all_order_item
+        if item:
+            return item.order.order_type
+        return None
 
     def get_order_info(self, obj):
         item = getattr(obj, "order_item", None)
