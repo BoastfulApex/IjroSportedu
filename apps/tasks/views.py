@@ -79,6 +79,11 @@ class TaskViewSet(viewsets.ModelViewSet):
         if deadline_before:
             qs = qs.filter(deadline__date__lte=deadline_before)
 
+        # ?only_assignee=true — faqat o'zi biriktirilgan topshiriqlar
+        # (asosiy/qo'shimcha ijrochi yoki ma'lumot uchun; bo'lim a'zoligi hisobga olinmaydi)
+        if self.request.query_params.get("only_assignee") == "true":
+            return qs.filter(assignees__user=user).distinct()
+
         # ?my_tasks=true — o'zi ijrochi YOKI target_department xodimi bo'lgan topshiriqlar
         if self.request.query_params.get("my_tasks") == "true":
             active_roles = user.role_assignments.filter(is_active=True)
