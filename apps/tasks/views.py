@@ -53,7 +53,9 @@ class TaskViewSet(viewsets.ModelViewSet):
             "creator", "creating_department__organization",
             "target_organization", "target_department",
             "for_all_order_item__order",
+            "order_item__order",
         ).prefetch_related(
+            "order_item__order__attachments",
             "assignees__user",
             "assignees__organization",
             "assignees__department",
@@ -68,6 +70,14 @@ class TaskViewSet(viewsets.ModelViewSet):
                 output_field=CharField(),
             )
         )
+
+        # ?deadline_after / ?deadline_before — taqvim uchun sana oralig'i filtri
+        deadline_after = self.request.query_params.get("deadline_after")
+        deadline_before = self.request.query_params.get("deadline_before")
+        if deadline_after:
+            qs = qs.filter(deadline__date__gte=deadline_after)
+        if deadline_before:
+            qs = qs.filter(deadline__date__lte=deadline_before)
 
         # ?my_tasks=true — o'zi ijrochi YOKI target_department xodimi bo'lgan topshiriqlar
         if self.request.query_params.get("my_tasks") == "true":

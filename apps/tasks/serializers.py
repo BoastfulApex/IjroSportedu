@@ -4,6 +4,35 @@ from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, 
 from apps.accounts.serializers import UserListSerializer
 
 
+def build_order_info(obj, request):
+    """Task ning order_item yoki for_all_order_item bandidan buyruq ma'lumotini yig'adi."""
+    item = getattr(obj, "order_item", None) or obj.for_all_order_item
+    if item is None:
+        return None
+    order = item.order
+    attachments = []
+    for att in order.attachments.all():
+        file_url = request.build_absolute_uri(att.file.url) if request else att.file.url
+        attachments.append({
+            "id":            att.id,
+            "original_name": att.original_name or att.file.name.split("/")[-1],
+            "file_url":      file_url,
+            "uploaded_at":   str(att.uploaded_at),
+        })
+    return {
+        "order_id":           order.id,
+        "order_number":       order.number,
+        "order_title":        order.title,
+        "order_date":         str(order.date),
+        "order_type":         order.order_type,
+        "order_type_display": order.get_order_type_display(),
+        "band_number":        item.band_number,
+        "band_content":       item.content,
+        "item_type":          item.item_type,
+        "item_type_display":  item.get_item_type_display(),
+        "attachments":        attachments,
+    }
+
 
 class TaskAssigneeSerializer(serializers.ModelSerializer):
     user_email         = serializers.EmailField(source="user.email",      read_only=True)
@@ -127,6 +156,7 @@ class TaskListSerializer(serializers.ModelSerializer):
     # is_overdue — bazadagi qiymat emas, har safar real vaqtda hisoblanadi
     is_overdue   = serializers.SerializerMethodField()
     task_source  = serializers.SerializerMethodField()
+    order_info   = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -138,7 +168,7 @@ class TaskListSerializer(serializers.ModelSerializer):
             "target_department", "target_department_name",
             "deadline", "is_overdue", "created_at", "updated_at",
             "assignees_count", "assignees",
-            "task_source",
+            "task_source", "order_info",
         ]
 
     def get_assignees_count(self, obj):
@@ -156,6 +186,9 @@ class TaskListSerializer(serializers.ModelSerializer):
         if obj.for_all_order_item_id and obj.for_all_order_item_id:
             return obj.for_all_order_item.order.order_type
         return None
+
+    def get_order_info(self, obj):
+        return build_order_info(obj, self.context.get("request"))
 
 
 class TaskDetailSerializer(serializers.ModelSerializer):
@@ -205,33 +238,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
         return None
 
     def get_order_info(self, obj):
-        item = getattr(obj, "order_item", None)
-        if item is None:
-            item = obj.for_all_order_item
-        if item is None:
-            return None
-        order = item.order
-        request = self.context.get("request")
-        attachments = []
-        for att in order.attachments.all():
-            file_url = request.build_absolute_uri(att.file.url) if request else att.file.url
-            attachments.append({
-                "id":            att.id,
-                "original_name": att.original_name or att.file.name.split("/")[-1],
-                "file_url":      file_url,
-                "uploaded_at":   str(att.uploaded_at),
-            })
-        return {
-            "order_id":          order.id,
-            "order_number":      order.number,
-            "order_title":       order.title,
-            "order_date":        str(order.date),
-            "order_type":        order.order_type,
-            "order_type_display": order.get_order_type_display(),
-            "band_number":       item.band_number,
-            "band_content":      item.content,
-            "attachments":       attachments,
-        }
+        return build_order_info(obj, self.context.get("request"))
 
     def get_meeting_info(self, obj):
         if not obj.meeting_id:
