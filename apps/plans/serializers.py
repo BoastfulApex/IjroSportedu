@@ -102,9 +102,10 @@ class DailyReportCreateSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyReport
         fields = [
-            "department", "date", "content",
+            "id", "department", "date", "content",
             "work_plan_item", "is_outside_plan",
         ]
+        read_only_fields = ["id"]
         extra_kwargs = {
             "content": {"allow_blank": True, "required": False},
         }
@@ -129,7 +130,7 @@ class WeeklyReportExtraSerializer(serializers.ModelSerializer):
             "id", "content",
             "work_plan_item", "work_plan_item_info",
             "is_outside_plan",
-            "created_by_name", "created_at", "images",
+            "created_by", "created_by_name", "created_at", "images",
         ]
         read_only_fields = ["created_by", "created_at"]
 
@@ -152,10 +153,11 @@ class DailyReportBriefSerializer(serializers.ModelSerializer):
     class Meta:
         model = DailyReport
         fields = [
-            "id", "date", "author_name", "content",
+            "id", "date", "author", "author_name", "content",
             "work_plan_item", "work_plan_item_info",
             "is_outside_plan", "images",
         ]
+        read_only_fields = ["author"]
 
     def get_work_plan_item_info(self, obj):
         if obj.work_plan_item:
