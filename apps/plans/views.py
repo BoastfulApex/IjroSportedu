@@ -214,7 +214,7 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         user = self.request.user
         qs = DailyReport.objects.select_related(
             "author", "department", "work_plan_item"
-        ).prefetch_related("images")
+        ).prefetch_related("images", "author__role_assignments")
 
         if can_view_all(user):
             pass

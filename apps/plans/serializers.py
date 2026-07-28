@@ -6,6 +6,23 @@ from .models import (
 )
 
 
+def get_user_position(user, department_id=None):
+    """Foydalanuvchining lavozimi — hisobotlar ro'yxatida ko'rsatish uchun.
+
+    Foydalanuvchida bir nechta rol bo'lishi mumkin — shu hisobot qaysi bo'limga
+    tegishli bo'lsa, o'sha bo'limdagi lavozim ustunlik qiladi.
+    """
+    qs = user.role_assignments.filter(is_active=True)
+    assignment = None
+    if department_id:
+        assignment = qs.filter(department_id=department_id).first()
+    if not assignment:
+        assignment = qs.first()
+    if not assignment:
+        return None
+    return assignment.custom_role_name or assignment.get_role_display()
+
+
 # ── WorkPlan ─────────────────────────────────────────────────────────────────
 
 class WorkPlanItemSerializer(serializers.ModelSerializer):
@@ -72,6 +89,7 @@ class DailyReportImageSerializer(serializers.ModelSerializer):
 
 class DailyReportSerializer(serializers.ModelSerializer):
     author_name      = serializers.CharField(source="author.full_name", read_only=True)
+    author_position  = serializers.SerializerMethodField()
     department_name  = serializers.CharField(source="department.name", read_only=True)
     work_plan_item_content = serializers.SerializerMethodField()
     images           = DailyReportImageSerializer(many=True, read_only=True)
@@ -80,7 +98,7 @@ class DailyReportSerializer(serializers.ModelSerializer):
         model = DailyReport
         fields = [
             "id", "department", "department_name",
-            "author", "author_name",
+            "author", "author_name", "author_position",
             "date", "content",
             "work_plan_item", "work_plan_item_content",
             "is_outside_plan",
@@ -96,6 +114,9 @@ class DailyReportSerializer(serializers.ModelSerializer):
                 "content": obj.work_plan_item.content[:100],
             }
         return None
+
+    def get_author_position(self, obj):
+        return get_user_position(obj.author, obj.department_id)
 
 
 class DailyReportCreateSerializer(serializers.ModelSerializer):
@@ -147,13 +168,14 @@ class WeeklyReportExtraSerializer(serializers.ModelSerializer):
 class DailyReportBriefSerializer(serializers.ModelSerializer):
     """Haftalik hisobot ichida kunlik hisobotlar uchun."""
     author_name          = serializers.CharField(source="author.full_name", read_only=True)
+    author_position      = serializers.SerializerMethodField()
     work_plan_item_info  = serializers.SerializerMethodField()
     images               = DailyReportImageSerializer(many=True, read_only=True)
 
     class Meta:
         model = DailyReport
         fields = [
-            "id", "date", "author", "author_name", "content",
+            "id", "date", "author", "author_name", "author_position", "content",
             "work_plan_item", "work_plan_item_info",
             "is_outside_plan", "images",
         ]
@@ -167,6 +189,9 @@ class DailyReportBriefSerializer(serializers.ModelSerializer):
                 "content": obj.work_plan_item.content[:120],
             }
         return None
+
+    def get_author_position(self, obj):
+        return get_user_position(obj.author, obj.department_id)
 
 
 class WeeklyReportSerializer(serializers.ModelSerializer):

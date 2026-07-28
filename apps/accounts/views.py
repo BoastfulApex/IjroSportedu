@@ -17,6 +17,27 @@ from .serializers import (
 from .permissions import IsSuperAdmin
 
 
+def ensure_position_department(assignment):
+    """
+    Faqat tashkilotga biriktirilgan (bo'lim/kafedra yo'q) xodim uchun —
+    lavozim nomi (custom_role_name) asosida Department topib/yaratib bog'laydi.
+    Shunda kunlik/haftalik hisobot va boshqa bo'lim-asosli sahifalar
+    qo'shimcha o'zgarishsiz ishlayveradi.
+    """
+    if assignment.department_id or assignment.chair_id:
+        return
+    if not assignment.organization_id or not assignment.custom_role_name:
+        return
+    from apps.organizations.models import Department
+    dept, _ = Department.objects.get_or_create(
+        organization=assignment.organization,
+        name=assignment.custom_role_name,
+        defaults={"dept_type": Department.DeptType.REGULAR},
+    )
+    assignment.department = dept
+    assignment.save(update_fields=["department"])
+
+
 class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
 
@@ -254,6 +275,7 @@ class UserViewSet(viewsets.ModelViewSet):
             assigned_by=request.user,
             **serializer.validated_data,
         )
+        ensure_position_department(assignment)
         return Response(RoleAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["delete"], url_path=r"roles/(?P<role_id>\d+)")

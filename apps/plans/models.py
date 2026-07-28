@@ -158,7 +158,7 @@ class WeeklyReport(models.Model):
             department=self.department,
             date__gte=self.week_start,
             date__lte=self.week_end,
-        ).select_related("author", "work_plan_item").prefetch_related("images")
+        ).select_related("author", "work_plan_item").prefetch_related("images", "author__role_assignments")
 
 
 class WeeklyReportExtra(models.Model):
