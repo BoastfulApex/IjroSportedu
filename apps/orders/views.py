@@ -16,6 +16,24 @@ from .serializers import (
 )
 
 
+def can_view_all_orders(user):
+    """Buyruqlar nazorati sahifasini ko'ra oladigan foydalanuvchi."""
+    from django.db.models import Q
+    return (
+        user.is_super_admin() or
+        user.is_task_controller() or
+        user.is_scientific_council_secretary() or
+        UserRoleAssignment.objects.filter(
+            user=user, is_active=True,
+        ).filter(
+            Q(department__dept_type="ORDER_CONTROL") |
+            Q(department__dept_type="TASK_CONTROL") |
+            Q(can_create_tasks=True) |
+            Q(department__can_create_tasks=True)
+        ).exists()
+    )
+
+
 class OrderViewSet(viewsets.ModelViewSet):
     """
     Buyruqlar CRUD + band qo'shish/o'chirish + tasdiqlash.
@@ -512,22 +530,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"], url_path="all-tasks")
     def all_tasks(self, request):
         """Barcha buyruq bandlari nazorati — faqat ruxsat etilgan foydalanuvchilar uchun."""
-        user = request.user
-        from django.db.models import Q
-        has_perm = (
-            user.is_super_admin() or
-            user.is_task_controller() or
-            user.is_scientific_council_secretary() or
-            UserRoleAssignment.objects.filter(
-                user=user, is_active=True,
-            ).filter(
-                Q(department__dept_type="ORDER_CONTROL") |
-                Q(department__dept_type="TASK_CONTROL") |
-                Q(can_create_tasks=True) |
-                Q(department__can_create_tasks=True)
-            ).exists()
-        )
-        if not has_perm:
+        if not can_view_all_orders(request.user):
             return Response({"detail": "Ruxsat yo'q"}, status=403)
 
         items = OrderItem.objects.filter(
@@ -543,6 +546,57 @@ class OrderViewSet(viewsets.ModelViewSet):
 
         from .serializers import OrderItemSerializer
         return Response(OrderItemSerializer(items, many=True, context={"request": request}).data)
+
+    # ── Buyruq topshiriqlari umumiy statistikasi (majlislar kabi aniq) ────
+    @action(detail=False, methods=["get"], url_path="aggregate-stats")
+    def aggregate_stats(self, request):
+        """Buyruq bandlaridan yaratilgan topshiriqlar bo'yicha aniq statistika.
+
+        Mantiq (is_overdue fieldiga tayanmaydi — to'g'ridan DB fieldlari, majlislar bilan bir xil):
+          - late_done : submitted_at > deadline  (kech topshirilgan, lekin bajarilgan)
+          - overdue   : deadline < now AND status hali yakunlanmagan
+          - in_progress = total - completed - overdue
+        """
+        if not can_view_all_orders(request.user):
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
+
+        from django.db.models import Q, F
+        from django.utils import timezone as tz
+
+        now = tz.now()
+        order_type = request.query_params.get("order_type")
+
+        tasks = Task.objects.filter(
+            Q(order_item__isnull=False) | Q(for_all_order_item__isnull=False)
+        )
+        if order_type:
+            tasks = tasks.filter(
+                Q(order_item__order__order_type=order_type) |
+                Q(for_all_order_item__order__order_type=order_type)
+            )
+        tasks = tasks.distinct()
+
+        done_statuses = ["APPROVED", "CLOSED"]
+        total     = tasks.count()
+        completed = tasks.filter(status__in=done_statuses).count()
+        overdue   = tasks.filter(
+            deadline__isnull=False,
+            deadline__lt=now,
+        ).exclude(status__in=done_statuses).count()
+        in_progress = total - completed - overdue
+        late_done = tasks.filter(
+            submitted_at__isnull=False,
+            deadline__isnull=False,
+            submitted_at__gt=F("deadline"),
+        ).count()
+
+        return Response({
+            "total":       total,
+            "in_progress": in_progress,
+            "completed":   completed,
+            "overdue":     overdue,
+            "late_done":   late_done,
+        })
 
     # ── Mening buyruq topshiriqlarim ──────────────────────────────
     @action(detail=False, methods=["get"], url_path="my-tasks")

@@ -38,6 +38,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
     task_status              = serializers.CharField(source="task.status", read_only=True)
     task_title               = serializers.CharField(source="task.title", read_only=True)
     task_deadline            = serializers.DateTimeField(source="task.deadline", read_only=True)
+    task_submitted_at        = serializers.DateTimeField(source="task.submitted_at", read_only=True)
     task_priority            = serializers.CharField(source="task.priority", read_only=True)
     task_is_malumot          = serializers.BooleanField(source="task.is_malumot", read_only=True)
     task_creating_department = serializers.IntegerField(source="task.creating_department_id", read_only=True)
@@ -59,7 +60,7 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = [
             "id", "band_number", "content", "deadline", "item_type", "is_for_all",
             "responsible", "responsible_name",
-            "task_id", "task_title", "task_status", "task_deadline",
+            "task_id", "task_title", "task_status", "task_deadline", "task_submitted_at",
             "task_priority", "task_is_malumot",
             "task_creating_department", "task_target_department", "task_valid_transitions",
             "task_assignees",
