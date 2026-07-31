@@ -33,7 +33,29 @@ def get_next_saturday_15():
     )
     return saturday
 from apps.accounts.permissions import IsTaskController, CanCreateTask, IsTaskRelated
-from apps.accounts.models import User
+from apps.accounts.models import User, UserRoleAssignment
+
+
+def can_edit_deadline(user, task):
+    """Muddatni keyinroq kirita/o'zgartira oladigan foydalanuvchilar:
+    Topshiriqlar bo'limi (TASK_CONTROL) yoki Buyruqlar bo'limi (ORDER_CONTROL),
+    shu topshiriqni yaratgan bo'lim, yoki super admin."""
+    if user.is_super_admin() or user.is_task_controller():
+        return True
+    if user.is_scientific_council_secretary():
+        return True
+    if task.creating_department_id and UserRoleAssignment.objects.filter(
+        user=user, is_active=True, department_id=task.creating_department_id
+    ).exists():
+        return True
+    return UserRoleAssignment.objects.filter(
+        user=user, is_active=True,
+    ).filter(
+        Q(department__dept_type="ORDER_CONTROL") |
+        Q(department__dept_type="TASK_CONTROL") |
+        Q(can_create_tasks=True) |
+        Q(department__can_create_tasks=True)
+    ).exists()
 
 
 class TaskViewSet(viewsets.ModelViewSet):
@@ -336,8 +358,10 @@ class TaskViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["patch"], url_path="deadline")
     def update_deadline(self, request, pk=None):
-        """Topshiriq muddatini o'zgartirish (faqat task yaratuvchi / canManage)."""
+        """Muddatni o'zgartirish/kiritish — Topshiriqlar bo'limi, Buyruqlar bo'limi yoki super admin."""
         task = self.get_object()
+        if not can_edit_deadline(request.user, task):
+            return Response({"detail": "Ruxsat yo'q"}, status=403)
         deadline_str = request.data.get("deadline", "").strip()
         if not deadline_str:
             task.deadline = None
