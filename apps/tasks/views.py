@@ -154,7 +154,12 @@ class TaskViewSet(viewsets.ModelViewSet):
         from django.db.models import Q as DQ
         user = self.request.user
 
-        if user.is_super_admin() or user.is_task_controller():
+        if (
+            user.is_super_admin()
+            or user.is_task_controller()
+            or user.is_institute_leader()
+            or user.is_branch_leader()
+        ):
             assignment = UserRoleAssignment.objects.filter(
                 user=user, is_active=True, department__isnull=False
             ).select_related("department").first()
@@ -171,8 +176,9 @@ class TaskViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("Sizda topshiriq yaratish huquqi yo'q")
             dept = assignment.department
 
-        # targets — validated_data dan olib tashlab, qo'lda ishlaymiz
+        # targets / assignees — validated_data dan olib tashlab, qo'lda ishlaymiz
         targets_data = serializer.validated_data.pop("targets", [])
+        assignees_data = serializer.validated_data.pop("assignees", [])
         first = targets_data[0] if targets_data else {}
 
         task = serializer.save(
@@ -196,6 +202,28 @@ class TaskViewSet(viewsets.ModelViewSet):
                 )
             except Exception as e:
                 logger.error(f"TaskOrganizationTarget yaratishda xatolik: {e}, data={t}")
+
+        # Ijrochilar — yaratishda kiritilgan bo'lsa, shu yerda biriktiramiz.
+        # Bir nechta ijrochi kiritilganda hammasi asosiy ijrochi bo'lishi mumkin
+        # (bitta-primary cheklovi bu yerda qo'llanilmaydi — foydalanuvchi belgilagani saqlanadi)
+        for a in assignees_data:
+            a_user_id = a.get("user")
+            if not a_user_id:
+                continue
+            try:
+                a_user = User.objects.get(id=a_user_id, is_active=True)
+            except User.DoesNotExist:
+                continue
+            TaskAssignee.objects.create(
+                task=task,
+                user=a_user,
+                assigned_by=user,
+                organization_id=a.get("organization"),
+                department_id=a.get("department"),
+                chair_id=a.get("chair"),
+                is_primary=bool(a.get("is_primary", False)),
+                is_leader=bool(a.get("is_leader", False)),
+            )
 
     def get_permissions(self):
         if self.action == "download_attachment":

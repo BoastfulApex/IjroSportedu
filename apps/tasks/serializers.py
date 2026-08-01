@@ -277,6 +277,10 @@ class TaskDetailSerializer(serializers.ModelSerializer):
 
 class TaskCreateSerializer(serializers.ModelSerializer):
     targets = OrgTargetInputSerializer(many=True, write_only=True)
+    # Yaratish paytida bir nechta ijrochi — hammasi asosiy bo'lishi mumkin
+    assignees = serializers.ListField(
+        child=serializers.DictField(), required=False, write_only=True, default=list
+    )
     deadline = serializers.DateTimeField(
         required=False,
         allow_null=True,
@@ -293,6 +297,7 @@ class TaskCreateSerializer(serializers.ModelSerializer):
             "id",
             "title", "description", "priority", "task_type",
             "targets",   # ← bir nechta tashkilot manzillari
+            "assignees", # ← yaratishda ijrochilar (hammasi asosiy bo'lishi mumkin)
             "deadline", "status",
         ]
         read_only_fields = ["id", "status"]

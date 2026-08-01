@@ -41,11 +41,17 @@ class CanViewAllReports(BasePermission):
 
 
 class CanCreateTask(BasePermission):
-    """TASK_CONTROL bo'lim xodimlari, can_create_tasks=True bo'limi xodimlari"""
+    """TASK_CONTROL bo'lim xodimlari, can_create_tasks=True bo'limi xodimlari,
+    institut rahbari yoki filial rahbari"""
     def has_permission(self, request, view):
         if not (request.user and request.user.is_authenticated):
             return False
-        if request.user.is_super_admin() or request.user.is_task_controller() or request.user.is_institute_leader():
+        if (
+            request.user.is_super_admin()
+            or request.user.is_task_controller()
+            or request.user.is_institute_leader()
+            or request.user.is_branch_leader()
+        ):
             return True
         return UserRoleAssignment.objects.filter(
             user=request.user,
