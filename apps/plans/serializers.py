@@ -1,9 +1,42 @@
 from rest_framework import serializers
+from apps.tasks.models import Task, TaskHistory
 from .models import (
     WorkPlan, WorkPlanItem,
     DailyReport, DailyReportImage,
     WeeklyReport, WeeklyReportExtra, WeeklyReportExtraImage,
 )
+
+# Kunlik hisobotda avtomatik ko'rsatiladigan topshiriq bosqichlari
+TASK_ACTION_LABELS = {
+    Task.Status.ACCEPTED.label,
+    Task.Status.IN_PROGRESS.label,
+    Task.Status.SUBMITTED.label,
+}
+
+
+def get_task_actions(author_id, date):
+    """Foydalanuvchi ma'lum bir kunda qaysi topshiriqlar bo'yicha
+    qanday amal bajarganini qaytaradi (qabul qildi / boshladi / topshirdi)."""
+    qs = (
+        TaskHistory.objects.filter(
+            actor_id=author_id,
+            field_name="status",
+            timestamp__date=date,
+            new_value__in=TASK_ACTION_LABELS,
+        )
+        .select_related("task")
+        .order_by("timestamp")
+    )
+    return [
+        {
+            "id": h.id,
+            "task": h.task_id,
+            "task_title": h.task.title,
+            "status_label": h.new_value,
+            "timestamp": h.timestamp,
+        }
+        for h in qs
+    ]
 
 
 def get_user_position(user, department_id=None):
@@ -93,6 +126,7 @@ class DailyReportSerializer(serializers.ModelSerializer):
     department_name  = serializers.CharField(source="department.name", read_only=True)
     work_plan_item_content = serializers.SerializerMethodField()
     images           = DailyReportImageSerializer(many=True, read_only=True)
+    task_actions     = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyReport
@@ -102,7 +136,7 @@ class DailyReportSerializer(serializers.ModelSerializer):
             "date", "content",
             "work_plan_item", "work_plan_item_content",
             "is_outside_plan",
-            "images", "created_at",
+            "images", "created_at", "task_actions",
         ]
         read_only_fields = ["author", "created_at"]
 
@@ -117,6 +151,9 @@ class DailyReportSerializer(serializers.ModelSerializer):
 
     def get_author_position(self, obj):
         return get_user_position(obj.author, obj.department_id)
+
+    def get_task_actions(self, obj):
+        return get_task_actions(obj.author_id, obj.date)
 
 
 class DailyReportCreateSerializer(serializers.ModelSerializer):
@@ -171,13 +208,14 @@ class DailyReportBriefSerializer(serializers.ModelSerializer):
     author_position      = serializers.SerializerMethodField()
     work_plan_item_info  = serializers.SerializerMethodField()
     images               = DailyReportImageSerializer(many=True, read_only=True)
+    task_actions         = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyReport
         fields = [
             "id", "date", "author", "author_name", "author_position", "content",
             "work_plan_item", "work_plan_item_info",
-            "is_outside_plan", "images",
+            "is_outside_plan", "images", "task_actions",
         ]
         read_only_fields = ["author"]
 
@@ -192,6 +230,9 @@ class DailyReportBriefSerializer(serializers.ModelSerializer):
 
     def get_author_position(self, obj):
         return get_user_position(obj.author, obj.department_id)
+
+    def get_task_actions(self, obj):
+        return get_task_actions(obj.author_id, obj.date)
 
 
 class WeeklyReportSerializer(serializers.ModelSerializer):
