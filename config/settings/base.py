@@ -11,6 +11,10 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env.bool("DEBUG", default=False)
 ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost"])
 
+# Django admin manzili. Bo'sh qiymat — admin o'chirilgan (production standarti, pentest Y1).
+# Kerak bo'lsa .env da maxfiy manzil bering: ADMIN_URL=boshqaruv-x7k2/
+ADMIN_URL = env("ADMIN_URL", default="admin/")
+
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",

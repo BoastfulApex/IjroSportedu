@@ -4,7 +4,6 @@ from django.conf import settings
 from django.conf.urls.static import static
 
 urlpatterns = [
-    path("admin/", admin.site.urls),
     path("api/auth/", include("apps.accounts.urls")),
     path("api/admin/", include("apps.organizations.urls_admin")),
     path("api/organizations/", include("apps.organizations.urls")),
@@ -14,6 +13,11 @@ urlpatterns = [
     path("api/plans/", include("apps.plans.urls")),
     path("api/orders/", include("apps.orders.urls")),
 ]
+
+# Django admin — faqat ADMIN_URL berilganda (production'da standart: o'chirilgan)
+_admin_url = settings.ADMIN_URL.strip("/")
+if _admin_url:
+    urlpatterns.insert(0, path(f"{_admin_url}/", admin.site.urls))
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
