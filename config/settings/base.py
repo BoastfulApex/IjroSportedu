@@ -29,6 +29,7 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt",
     "corsheaders",
     "django_filters",
+    "axes",
 ]
 
 LOCAL_APPS = [
@@ -53,7 +54,23 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    # django-axes — ro'yxat oxirida bo'lishi shart
+    "axes.middleware.AxesMiddleware",
 ]
+
+# ── Login brute force himoyasi (django-axes, pentest Y2) ─────────────
+AUTHENTICATION_BACKENDS = [
+    "axes.backends.AxesStandaloneBackend",  # birinchi bo'lishi shart
+    "django.contrib.auth.backends.ModelBackend",
+]
+AXES_FAILURE_LIMIT = 5                       # 5 ta noto'g'ri urinish
+AXES_COOLOFF_TIME = timedelta(minutes=15)    # ...dan keyin 15 daqiqa blok
+AXES_RESET_ON_SUCCESS = True                 # to'g'ri login hisoblagichni nolga tushiradi
+# Faqat email bo'yicha blok: barcha so'rovlar bitta proksi IP'sidan (192.168.10.21) keladi —
+# IP bo'yicha blok butun universitetni bloklab qo'yadi.
+AXES_LOCKOUT_PARAMETERS = ["username"]
+AXES_USERNAME_FORM_FIELD = "email"
+AXES_HTTP_RESPONSE_CODE = 429
 
 ROOT_URLCONF = "config.urls"
 

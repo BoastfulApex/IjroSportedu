@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from rest_framework.exceptions import AuthenticationFailed
+from rest_framework.exceptions import AuthenticationFailed, APIException
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.password_validation import validate_password
 from .models import User, UserRoleAssignment
@@ -11,6 +11,11 @@ ACCOUNT_PENDING_MESSAGE = (
 )
 
 
+class LoginLocked(APIException):
+    status_code = 429
+    default_code = "login_locked"
+
+
 class LoginSerializer(TokenObtainPairSerializer):
     """Standart JWT login + nofaol (admin tasdig'ini kutayotgan) hisob uchun aniq xabar.
     Xabar faqat parol TO'G'RI bo'lganda beriladi — aks holda standart xato
@@ -20,6 +25,16 @@ class LoginSerializer(TokenObtainPairSerializer):
         try:
             return super().validate(attrs)
         except AuthenticationFailed:
+            # django-axes: email bloklangan (5 noto'g'ri urinish) — avval shuni tekshir,
+            # aks holda quyidagi parol tekshiruvi blokni chetlab o'tishga imkon beradi
+            request = self.context.get("request")
+            if getattr(request, "axes_locked_out", False):
+                from django.conf import settings
+                minutes = int(settings.AXES_COOLOFF_TIME.total_seconds() // 60)
+                raise LoginLocked(
+                    {"detail": f"Juda ko'p noto'g'ri urinish. {minutes} daqiqadan keyin qayta urinib ko'ring.",
+                     "code": "login_locked"}
+                )
             user = User.objects.filter(email=attrs.get(self.username_field)).first()
             if user and not user.is_active and user.check_password(attrs.get("password", "")):
                 raise AuthenticationFailed(
