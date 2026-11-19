@@ -167,6 +167,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "Fayl tanlanmagan"}, status=400)
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="document")
+        if error:
+            return Response({"detail": error}, status=400)
         att = OrderAttachment.objects.create(
             order=order,
             file=file,
@@ -244,9 +248,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({"detail": "Fayl yuborilmadi"}, status=400)
 
-        name = file.name.lower()
-        if not (name.endswith(".xlsx") or name.endswith(".xls")):
-            return Response({"detail": "Faqat Excel fayl (.xlsx, .xls) qabul qilinadi"}, status=400)
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="excel")
+        if error:
+            return Response({"detail": error}, status=400)
 
         try:
             import openpyxl

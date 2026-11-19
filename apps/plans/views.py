@@ -144,6 +144,10 @@ class WorkPlanViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "Fayl talab qilinadi"}, status=400)
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="excel")
+        if error:
+            return Response({"detail": error}, status=400)
 
         try:
             import openpyxl
@@ -253,6 +257,10 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         images = request.FILES.getlist("images")
         if not images:
             return Response({"detail": "Rasm talab qilinadi"}, status=400)
+        from apps.core.uploads import validate_uploads
+        error = validate_uploads(images, kind="image")
+        if error:
+            return Response({"detail": error}, status=400)
         created = []
         for img in images:
             obj = DailyReportImage.objects.create(report=report, image=img)
@@ -348,6 +356,10 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
         images = request.FILES.getlist("images")
         if not content and not images:
             return Response({"detail": "Matn yoki rasm kiritilishi shart"}, status=400)
+        from apps.core.uploads import validate_uploads
+        error = validate_uploads(images, kind="image")
+        if error:
+            return Response({"detail": error}, status=400)
 
         is_outside = request.data.get("is_outside_plan", "false")
         is_outside = is_outside in (True, "true", "True", "1")
@@ -386,6 +398,10 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
         report = self.get_object()
         from django.shortcuts import get_object_or_404
         extra = get_object_or_404(WeeklyReportExtra, id=extra_id, weekly_report=report)
+        from apps.core.uploads import validate_uploads
+        error = validate_uploads(request.FILES.getlist("images"), kind="image")
+        if error:
+            return Response({"detail": error}, status=400)
         created = []
         for img in request.FILES.getlist("images"):
             obj = WeeklyReportExtraImage.objects.create(extra=extra, image=img)

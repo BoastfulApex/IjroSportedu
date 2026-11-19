@@ -520,9 +520,10 @@ class TaskViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({"detail": "Fayl yuborilmadi"}, status=status.HTTP_400_BAD_REQUEST)
 
-        from django.conf import settings
-        if file.size > settings.MAX_UPLOAD_SIZE:
-            return Response({"detail": "Fayl hajmi 10MB dan oshmasligi kerak"}, status=400)
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="document")
+        if error:
+            return Response({"detail": error}, status=400)
 
         attachment_type = request.data.get("attachment_type", TaskAttachment.AttachmentType.TASK_FILE)
         if attachment_type not in TaskAttachment.AttachmentType.values:
@@ -677,10 +678,11 @@ class MeetingViewSet(viewsets.ModelViewSet):
         if not file:
             return Response({"detail": "Fayl yuborilmadi"}, status=400)
 
-        # Fayl kengaytmasini tekshir
-        name = file.name.lower()
-        if not (name.endswith(".xlsx") or name.endswith(".xls")):
-            return Response({"detail": "Faqat Excel fayl (.xlsx, .xls) qabul qilinadi"}, status=400)
+        # Fayl turi, hajmi va tarkibini tekshir
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="excel")
+        if error:
+            return Response({"detail": error}, status=400)
 
         try:
             import openpyxl
@@ -930,6 +932,10 @@ class MeetingViewSet(viewsets.ModelViewSet):
         file = request.FILES.get("file")
         if not file:
             return Response({"detail": "Fayl tanlanmagan"}, status=400)
+        from apps.core.uploads import validate_upload
+        error = validate_upload(file, kind="document")
+        if error:
+            return Response({"detail": error}, status=400)
         if meeting.file:
             meeting.file.delete(save=False)
         meeting.file = file

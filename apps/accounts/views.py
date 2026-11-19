@@ -22,6 +22,26 @@ class LoginView(TokenObtainPairView):
     serializer_class = LoginSerializer
 
 
+class LogoutView(APIView):
+    """Refresh tokenni bekor qiladi (blacklist) — undan keyin u bilan yangi access olib bo'lmaydi.
+
+    Access token muddati tugagan bo'lishi mumkin, shuning uchun autentifikatsiya talab qilinmaydi:
+    refresh tokenning o'zi egalik isboti. Javob har doim 205 (token holati oshkor qilinmaydi).
+    """
+    authentication_classes = []
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        from rest_framework_simplejwt.exceptions import TokenError
+        refresh = request.data.get("refresh")
+        if refresh:
+            try:
+                RefreshToken(refresh).blacklist()
+            except TokenError:
+                pass  # muddati o'tgan / allaqachon bekor qilingan / noto'g'ri — baribir chiqildi
+        return Response(status=status.HTTP_205_RESET_CONTENT)
+
+
 def ensure_position_department(assignment):
     """
     Faqat tashkilotga biriktirilgan (bo'lim/kafedra yo'q) xodim uchun —
