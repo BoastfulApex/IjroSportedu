@@ -15,6 +15,17 @@ ALLOWED_HOSTS = env.list("ALLOWED_HOSTS", default=["localhost"])
 # Kerak bo'lsa .env da maxfiy manzil bering: ADMIN_URL=boshqaruv-x7k2/
 ADMIN_URL = env("ADMIN_URL", default="admin/")
 
+# Admin faqat shu IP/tarmoqlardan ochiladi (boshqalarga 404). Pentest Y1.
+# 192.168.10.0/24 — tashkilot ichki tarmog'i (ichkaridan kirganlar server'ga LAN IP bilan keladi),
+# 195.158.30.179 — tashkilotning global (statik) IP'si.
+ADMIN_ALLOWED_IPS = env.list(
+    "ADMIN_ALLOWED_IPS",
+    default=["127.0.0.1", "::1", "192.168.10.0/24", "195.158.30.179"],
+)
+# Ishonchli proksilar — mijoz IP'si X-Forwarded-For'dan shular tashlab aniqlanadi.
+# 192.168.10.21 — tashqi nginx (u ham LAN'da, lekin hech qachon mijoz deb hisoblanmaydi).
+TRUSTED_PROXY_IPS = env.list("TRUSTED_PROXY_IPS", default=["192.168.10.21"])
+
 DJANGO_APPS = [
     "django.contrib.admin",
     "django.contrib.auth",
@@ -47,6 +58,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.core.middleware.AdminIPWhitelistMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -70,6 +82,8 @@ AXES_RESET_ON_SUCCESS = True                 # to'g'ri login hisoblagichni nolga
 # IP bo'yicha blok butun universitetni bloklab qo'yadi.
 AXES_LOCKOUT_PARAMETERS = ["username"]
 AXES_USERNAME_FORM_FIELD = "email"
+# API (`email`) va Django admin (`username`) — ikkalasi bitta email kalitiga
+AXES_USERNAME_CALLABLE = "apps.accounts.axes_utils.get_axes_username"
 AXES_HTTP_RESPONSE_CODE = 429
 
 ROOT_URLCONF = "config.urls"
