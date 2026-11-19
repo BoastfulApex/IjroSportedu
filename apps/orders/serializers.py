@@ -1,6 +1,7 @@
 from rest_framework import serializers
 from .models import Order, OrderItem, OrderItemApprover, OrderAttachment, OrderItemAcknowledgment
 from apps.tasks.serializers import TaskAssigneeSerializer
+from apps.core.files import signed_file_url
 
 
 class OrderItemAcknowledgmentSerializer(serializers.ModelSerializer):
@@ -20,8 +21,7 @@ class OrderAttachmentSerializer(serializers.ModelSerializer):
         fields = ["id", "original_name", "file_url", "uploaded_by_name", "uploaded_at"]
 
     def get_file_url(self, obj):
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return signed_file_url(self.context.get("request"), obj.file, obj.original_name)
 
 
 class OrderItemApproverSerializer(serializers.ModelSerializer):

@@ -193,39 +193,38 @@ class OrderViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["get"], url_path=r"attachments/(?P<att_id>\d+)/download",
             authentication_classes=[], permission_classes=[AllowAny])
     def download_attachment(self, request, pk=None, att_id=None):
-        import traceback, os
-        from django.http import HttpResponse
+        import os
+        from django.db.models import Q
         from rest_framework_simplejwt.authentication import JWTAuthentication
         from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-        try:
-            token = request.query_params.get("token")
-            user = None
-            if token:
-                try:
-                    auth = JWTAuthentication()
-                    validated = auth.get_validated_token(token)
-                    user = auth.get_user(validated)
-                except Exception:
-                    pass
-            if not user or not user.is_authenticated:
-                return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
-            order = get_object_or_404(Order, pk=pk)
+        from apps.core.files import file_response
+        token = request.query_params.get("token")
+        user = None
+        if token:
             try:
-                att = order.attachments.get(id=att_id)
-            except OrderAttachment.DoesNotExist:
-                return Response({"detail": "Ilova topilmadi"}, status=404)
-            if not att.file or not att.file.name:
-                return Response({"detail": "Fayl mavjud emas"}, status=404)
-            filename = att.original_name or os.path.basename(att.file.name)
-            content = att.file.read()
-            import mimetypes
-            mime, _ = mimetypes.guess_type(filename)
-            resp = HttpResponse(content, content_type=mime or "application/octet-stream")
-            resp["Content-Disposition"] = f'attachment; filename="{filename}"'
-            return resp
-        except Exception:
-            tb = traceback.format_exc()
-            return Response({"error": tb}, status=500)
+                auth = JWTAuthentication()
+                user = auth.get_user(auth.get_validated_token(token))
+            except (InvalidToken, TokenError):
+                pass
+        if not user or not user.is_authenticated or not user.is_active:
+            return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
+
+        # IDOR himoyasi: buyruqni ko'ra oladi YOKI shu buyruqqa bog'langan topshiriqni ko'ra oladi
+        request.user = user
+        visible = self.get_queryset().filter(pk=pk).exists()
+        if not visible:
+            from apps.tasks.views import TaskViewSet
+            task_view = TaskViewSet(request=request, kwargs={}, format_kwarg=None, action="list")
+            visible = task_view.get_queryset().filter(
+                Q(order_item__order_id=pk) | Q(for_all_order_item__order_id=pk)
+            ).exists()
+        if not visible:
+            return Response({"detail": "Topilmadi"}, status=404)
+
+        att = OrderAttachment.objects.filter(order_id=pk, id=att_id).first()
+        if not att or not att.file or not att.file.name or not att.file.storage.exists(att.file.name):
+            return Response({"detail": "Fayl mavjud emas"}, status=404)
+        return file_response(att.file.name, att.original_name or os.path.basename(att.file.name))
 
     # ── Excel dan bandlarni yuklash ────────────────────────────────
     @action(detail=True, methods=["post"], url_path="upload-excel",

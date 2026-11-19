@@ -27,6 +27,9 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
 
+# Fayllarni nginx beradi (X-Accel-Redirect → location /protected-media/ { internal; })
+USE_X_ACCEL_REDIRECT = env.bool("USE_X_ACCEL_REDIRECT", default=True)  # noqa: F405
+
 CSRF_TRUSTED_ORIGINS = [
     "https://ijro.sportedu.uz",
     "https://www.ijro.sportedu.uz",

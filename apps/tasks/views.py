@@ -363,7 +363,8 @@ class TaskViewSet(viewsets.ModelViewSet):
         task.save()
 
         if comment_text:
-            TaskComment.objects.create(task=task, author=request.user, content=comment_text)
+            from apps.core.html import clean_html
+            TaskComment.objects.create(task=task, author=request.user, content=clean_html(comment_text))
 
         # Buyruq bandi bilan bog'liq bo'lsa — acknowledgment yangilash
         if new_status == Task.Status.ACCEPTED:
@@ -586,20 +587,17 @@ class TaskViewSet(viewsets.ModelViewSet):
                 user = auth.get_user(validated)
             except (InvalidToken, TokenError):
                 pass
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or not user.is_active:
             return Response({"detail": "Autentifikatsiya talab etiladi"}, status=401)
-        task = get_object_or_404(Task, pk=pk)
+        # IDOR himoyasi: faqat foydalanuvchi ko'ra oladigan topshiriq (get_queryset rol filtri)
+        request.user = user
+        task = get_object_or_404(self.get_queryset(), pk=pk)
         att = get_object_or_404(TaskAttachment, id=att_id, task=task)
-        from django.http import FileResponse
         import os
-        if not att.file or not att.file.name:
+        from apps.core.files import file_response
+        if not att.file or not att.file.name or not att.file.storage.exists(att.file.name):
             return Response({"detail": "Fayl mavjud emas"}, status=404)
-        try:
-            file_obj = att.file.open("rb")
-        except (FileNotFoundError, OSError):
-            return Response({"detail": "Fayl diskda topilmadi"}, status=404)
-        filename = att.filename or os.path.basename(att.file.name)
-        return FileResponse(file_obj, as_attachment=True, filename=filename)
+        return file_response(att.file.name, att.filename or os.path.basename(att.file.name))
 
     @action(detail=True, methods=["get", "post"], url_path="comments")
     def comments(self, request, pk=None):

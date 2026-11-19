@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from apps.core.files import signed_file_url
 from apps.tasks.models import Task, TaskHistory
 from .models import (
     WorkPlan, WorkPlanItem,
@@ -114,7 +115,16 @@ class WorkPlanListSerializer(serializers.ModelSerializer):
 
 # ── DailyReport ───────────────────────────────────────────────────────────────
 
-class DailyReportImageSerializer(serializers.ModelSerializer):
+class SignedImageMixin:
+    """`image` — /media/ havolasi o'rniga imzolangan havola (/media/ nginx'da yopiq)."""
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret["image"] = signed_file_url(self.context.get("request"), instance.image)
+        return ret
+
+
+class DailyReportImageSerializer(SignedImageMixin, serializers.ModelSerializer):
     class Meta:
         model = DailyReportImage
         fields = ["id", "image", "uploaded_at"]
@@ -171,7 +181,7 @@ class DailyReportCreateSerializer(serializers.ModelSerializer):
 
 # ── WeeklyReport ──────────────────────────────────────────────────────────────
 
-class WeeklyReportExtraImageSerializer(serializers.ModelSerializer):
+class WeeklyReportExtraImageSerializer(SignedImageMixin, serializers.ModelSerializer):
     class Meta:
         model = WeeklyReportExtraImage
         fields = ["id", "image", "uploaded_at"]

@@ -2,6 +2,8 @@ from rest_framework import serializers
 from django.utils import timezone
 from .models import Task, TaskOrganizationTarget, TaskAssignee, TaskAttachment, TaskComment, TaskHistory, Meeting, MeetingAgendaItem, RecurringMeetingItem
 from apps.accounts.serializers import UserListSerializer
+from apps.core.files import signed_file_url
+from apps.core.html import clean_html
 
 
 def build_order_info(obj, request):
@@ -12,10 +14,11 @@ def build_order_info(obj, request):
     order = item.order
     attachments = []
     for att in order.attachments.all():
-        file_url = request.build_absolute_uri(att.file.url) if request else att.file.url
+        original_name = att.original_name or att.file.name.split("/")[-1]
+        file_url = signed_file_url(request, att.file, original_name)
         attachments.append({
             "id":            att.id,
-            "original_name": att.original_name or att.file.name.split("/")[-1],
+            "original_name": original_name,
             "file_url":      file_url,
             "uploaded_at":   str(att.uploaded_at),
         })
@@ -87,10 +90,7 @@ class TaskAttachmentSerializer(serializers.ModelSerializer):
         read_only_fields = ["filename", "file_size", "uploaded_by", "uploaded_at"]
 
     def get_file_url(self, obj):
-        request = self.context.get("request")
-        if obj.file and request:
-            return request.build_absolute_uri(obj.file.url)
-        return None
+        return signed_file_url(self.context.get("request"), obj.file, obj.filename)
 
 
 class TaskCommentSerializer(serializers.ModelSerializer):
@@ -104,6 +104,10 @@ class TaskCommentSerializer(serializers.ModelSerializer):
             "content", "created_at", "updated_at", "is_edited",
         ]
         read_only_fields = ["author", "created_at", "updated_at", "is_edited"]
+
+    def validate_content(self, value):
+        # Stored XSS himoyasi — faqat TipTap teglari qoladi (apps/core/html.py)
+        return clean_html(value)
 
 
 class TaskHistorySerializer(serializers.ModelSerializer):
@@ -245,9 +249,7 @@ class TaskDetailSerializer(serializers.ModelSerializer):
             return None
         m = obj.meeting
         request = self.context.get("request")
-        file_url = None
-        if m.file:
-            file_url = request.build_absolute_uri(m.file.url) if request else m.file.url
+        file_url = signed_file_url(request, m.file)
         return {
             "id":         m.id,
             "name":       m.name,
@@ -265,14 +267,6 @@ class TaskDetailSerializer(serializers.ModelSerializer):
     def get_valid_transitions(self, obj):
         return Task.VALID_TRANSITIONS.get(obj.status, [])
 
-    def to_representation(self, instance):
-        ret = super().to_representation(instance)
-        request = self.context.get("request")
-        if request and ret.get("attachments"):
-            for att in ret["attachments"]:
-                if att.get("file"):
-                    att["file_url"] = request.build_absolute_uri(att["file"])
-        return ret
 
 
 class TaskCreateSerializer(serializers.ModelSerializer):
@@ -432,10 +426,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         read_only_fields = ["created_by", "is_confirmed", "created_at"]
 
     def get_file_url(self, obj):
-        if not obj.file:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return signed_file_url(self.context.get("request"), obj.file)
 
     def get_created_count(self, obj):
         return obj.items.filter(task__isnull=False).count()
@@ -462,7 +453,4 @@ class MeetingListSerializer(serializers.ModelSerializer):
         return obj.items.filter(task__isnull=False).count()
 
     def get_file_url(self, obj):
-        if not obj.file:
-            return None
-        request = self.context.get("request")
-        return request.build_absolute_uri(obj.file.url) if request else obj.file.url
+        return signed_file_url(self.context.get("request"), obj.file)

@@ -3,7 +3,11 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 
+from apps.core.views import protected_file
+
 urlpatterns = [
+    # Himoyalangan fayllar — imzolangan havola (apps/core/files.py)
+    path("api/files/<str:token>/", protected_file, name="protected-file"),
     path("api/auth/", include("apps.accounts.urls")),
     path("api/admin/", include("apps.organizations.urls_admin")),
     path("api/organizations/", include("apps.organizations.urls")),

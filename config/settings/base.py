@@ -141,6 +141,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = env("MEDIA_URL", default="/media/")
 MEDIA_ROOT = BASE_DIR / env("MEDIA_ROOT", default="media")
 
+# Himoyalangan fayllar (apps/core/files.py). /media/ nginx'da yopiq — fayllar faqat
+# imzolangan havola (/api/files/<imzo>/) yoki ruxsat tekshiruvchi download orqali beriladi.
+PROTECTED_MEDIA_MAX_AGE = 12 * 60 * 60                 # imzolangan havola amal qilish muddati (soniya)
+USE_X_ACCEL_REDIRECT = env.bool("USE_X_ACCEL_REDIRECT", default=False)  # production'da True
+PROTECTED_MEDIA_INTERNAL_PREFIX = "/protected-media/"  # nginx: location /protected-media/ { internal; }
+
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # DRF
