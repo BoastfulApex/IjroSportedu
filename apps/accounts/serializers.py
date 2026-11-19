@@ -1,6 +1,31 @@
 from rest_framework import serializers
+from rest_framework.exceptions import AuthenticationFailed
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth.password_validation import validate_password
 from .models import User, UserRoleAssignment
+
+ACCOUNT_PENDING_CODE = "account_pending"
+ACCOUNT_PENDING_MESSAGE = (
+    "Hisobingiz faol emas. Yangi ro'yxatdan o'tgan bo'lsangiz, "
+    "administrator hisobingizni faollashtirishini kuting."
+)
+
+
+class LoginSerializer(TokenObtainPairSerializer):
+    """Standart JWT login + nofaol (admin tasdig'ini kutayotgan) hisob uchun aniq xabar.
+    Xabar faqat parol TO'G'RI bo'lganda beriladi — aks holda standart xato
+    (email mavjudligini oshkor qilmaslik uchun)."""
+
+    def validate(self, attrs):
+        try:
+            return super().validate(attrs)
+        except AuthenticationFailed:
+            user = User.objects.filter(email=attrs.get(self.username_field)).first()
+            if user and not user.is_active and user.check_password(attrs.get("password", "")):
+                raise AuthenticationFailed(
+                    {"detail": ACCOUNT_PENDING_MESSAGE, "code": ACCOUNT_PENDING_CODE}
+                )
+            raise
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -18,7 +43,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         validated_data.pop("password2")
-        return User.objects.create_user(**validated_data)
+        # Yangi hisob nofaol — super admin UsersPage dan faollashtiradi (pentest K3)
+        return User.objects.create_user(**validated_data, is_active=False)
 
 
 class UserProfileSerializer(serializers.ModelSerializer):

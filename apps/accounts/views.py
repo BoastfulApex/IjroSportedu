@@ -11,10 +11,15 @@ from django.shortcuts import get_object_or_404
 
 from .models import User, UserRoleAssignment
 from .serializers import (
-    RegisterSerializer, UserProfileSerializer,
+    RegisterSerializer, UserProfileSerializer, LoginSerializer,
     UserListSerializer, UserBasicSerializer, RoleAssignmentSerializer, AssignRoleSerializer,
+    ACCOUNT_PENDING_CODE, ACCOUNT_PENDING_MESSAGE,
 )
-from .permissions import IsSuperAdmin
+from .permissions import IsSuperAdmin, HasActiveRole
+
+
+class LoginView(TokenObtainPairView):
+    serializer_class = LoginSerializer
 
 
 def ensure_position_department(assignment):
@@ -80,6 +85,8 @@ class GoogleAuthView(APIView):
                 defaults={
                     "first_name": first_name,
                     "last_name":  last_name,
+                    # Yangi hisob nofaol — super admin faollashtiradi (pentest K3)
+                    "is_active":  False,
                 },
             )
 
@@ -100,7 +107,10 @@ class GoogleAuthView(APIView):
                     user.save(update_fields=["first_name", "last_name"])
 
             if not user.is_active:
-                return Response({"error": "Foydalanuvchi bloklangan"}, status=status.HTTP_403_FORBIDDEN)
+                return Response(
+                    {"detail": ACCOUNT_PENDING_MESSAGE, "code": ACCOUNT_PENDING_CODE, "is_new": created},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -129,7 +139,7 @@ class PublicUserSearchView(generics.ListAPIView):
       - search      : ism / familiya / email bo'yicha qidiruv
     """
     serializer_class = UserBasicSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasActiveRole]
 
     def get_queryset(self):
         qs = User.objects.filter(is_active=True)
@@ -208,7 +218,7 @@ class RegisterView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
         return Response(
-            {"detail": "Ro'yxatdan o'tish muvaffaqiyatli. Admin sizga rol biriktiradi."},
+            {"detail": "Ro'yxatdan o'tish muvaffaqiyatli. Administrator hisobingizni faollashtirgach, tizimga kira olasiz."},
             status=status.HTTP_201_CREATED,
         )
 

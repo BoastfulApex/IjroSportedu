@@ -58,6 +58,36 @@ def can_edit_deadline(user, task):
     ).exists()
 
 
+def can_manage_task(user, task):
+    """Topshiriqni tahrirlash va ijrochilarni boshqarish huquqi:
+    super admin, topshiriqlar nazoratchisi, topshiriqni yaratgan shaxs yoki bo'lim a'zosi,
+    ILMIY_KENGASH topshiriqlari uchun — ilmiy kengash kotibi.
+    (Frontend: TaskDetailPage — canManage || isCreatingDept)"""
+    if user.is_super_admin() or user.is_task_controller():
+        return True
+    if task.creator_id == user.id:
+        return True
+    if task.task_type == Task.TaskType.ILMIY_KENGASH and user.is_scientific_council_secretary():
+        return True
+    return bool(task.creating_department_id) and UserRoleAssignment.objects.filter(
+        user=user, is_active=True, department_id=task.creating_department_id
+    ).exists()
+
+
+def can_delete_attachment(user, attachment):
+    """TASK_FILE — faqat admin/task controller (yuklash qoidasi bilan bir xil).
+    REPORT_FILE — admin/task controller yoki faylni yuklagan ijrochining o'zi
+    (topshiriq hali tasdiqlanmagan bo'lsa)."""
+    if user.is_super_admin() or user.is_task_controller():
+        return True
+    if attachment.attachment_type == TaskAttachment.AttachmentType.REPORT_FILE:
+        return (
+            attachment.uploaded_by_id == user.id
+            and attachment.task.status not in (Task.Status.APPROVED, Task.Status.CLOSED)
+        )
+    return False
+
+
 class TaskViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser, JSONParser]
@@ -268,6 +298,12 @@ class TaskViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(task)
         return Response(serializer.data)
 
+    def update(self, request, *args, **kwargs):
+        # partial_update ham shu metod orqali o'tadi
+        if not can_manage_task(request.user, self.get_object()):
+            return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+        return super().update(request, *args, **kwargs)
+
     def destroy(self, request, *args, **kwargs):
         if not request.user.is_super_admin():
             return Response({"detail": "Faqat super admin topshiriqni o'chira oladi."}, status=403)
@@ -423,6 +459,9 @@ class TaskViewSet(viewsets.ModelViewSet):
                 "user", "organization", "department"
             ).all(), many=True).data)
 
+        if not can_manage_task(request.user, task):
+            return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
+
         user_id    = request.data.get("user")
         is_primary = bool(request.data.get("is_primary", False))
         is_leader  = bool(request.data.get("is_leader",  False))
@@ -455,6 +494,8 @@ class TaskViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["delete"], url_path=r"assignees/(?P<user_id>\d+)")
     def remove_assignee(self, request, pk=None, user_id=None):
         task = self.get_object()
+        if not can_manage_task(request.user, task):
+            return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
         assignee = get_object_or_404(TaskAssignee, task=task, user_id=user_id)
         TaskHistory.objects.create(
             task=task, actor=request.user,
@@ -525,6 +566,8 @@ class TaskViewSet(viewsets.ModelViewSet):
     def delete_attachment(self, request, pk=None, att_id=None):
         task = self.get_object()
         att = get_object_or_404(TaskAttachment, id=att_id, task=task)
+        if not can_delete_attachment(request.user, att):
+            return Response({"detail": "Ruxsat yo'q"}, status=status.HTTP_403_FORBIDDEN)
         att.file.delete(save=False)
         att.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

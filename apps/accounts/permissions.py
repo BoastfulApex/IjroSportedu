@@ -10,6 +10,18 @@ class IsSuperAdmin(BasePermission):
         )
 
 
+class HasActiveRole(BasePermission):
+    """Kamida bitta faol rolga ega foydalanuvchi (yoki super admin).
+    Faollashtirilgan, lekin hali rol berilmagan hisob ma'lumot ko'rmasligi uchun (pentest K3)."""
+    message = "Sizga hali rol biriktirilmagan. Administratorga murojaat qiling."
+
+    def has_permission(self, request, view):
+        user = request.user
+        if not (user and user.is_authenticated):
+            return False
+        return user.is_super_admin() or user.role_assignments.filter(is_active=True).exists()
+
+
 class IsTaskController(BasePermission):
     def has_permission(self, request, view):
         return bool(

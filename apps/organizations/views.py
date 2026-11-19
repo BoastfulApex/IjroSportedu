@@ -5,7 +5,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Organization, Department, Chair
 from .serializers import OrganizationSerializer, DepartmentSerializer, ChairSerializer
-from apps.accounts.permissions import IsSuperAdmin
+from rest_framework.permissions import IsAuthenticated
+from apps.accounts.permissions import IsSuperAdmin, HasActiveRole
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
@@ -50,18 +51,21 @@ class ChairViewSet(viewsets.ModelViewSet):
 
 # Non-admin read views
 class PublicOrganizationViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, HasActiveRole]
     queryset = Organization.objects.filter(is_active=True).order_by("org_type", "name")
     serializer_class = OrganizationSerializer
     filterset_fields = ["org_type", "parent"]
 
 
 class PublicDepartmentViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, HasActiveRole]
     queryset = Department.objects.filter(is_active=True).select_related("organization")
     serializer_class = DepartmentSerializer
     filterset_fields = ["organization", "dept_type"]
 
 
 class PublicChairViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated, HasActiveRole]
     queryset = Chair.objects.filter(is_active=True).select_related("organization")
     serializer_class = ChairSerializer
     filterset_fields = ["organization"]
