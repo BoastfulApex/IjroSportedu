@@ -16,6 +16,7 @@ from .serializers import (
     ACCOUNT_PENDING_CODE, ACCOUNT_PENDING_MESSAGE,
 )
 from .permissions import IsSuperAdmin, HasActiveRole
+from apps.core.audit import audit
 
 
 class LoginView(TokenObtainPairView):
@@ -36,7 +37,9 @@ class LogoutView(APIView):
         refresh = request.data.get("refresh")
         if refresh:
             try:
-                RefreshToken(refresh).blacklist()
+                token = RefreshToken(refresh)
+                token.blacklist()
+                audit("logout", request, user_id=token.payload.get("user_id", "-"))
             except TokenError:
                 pass  # muddati o'tgan / allaqachon bekor qilingan / noto'g'ri — baribir chiqildi
         return Response(status=status.HTTP_205_RESET_CONTENT)
@@ -114,6 +117,7 @@ class GoogleAuthView(APIView):
                 # Google orqali yaratilgan user — parol yo'q deb belgilaymiz
                 user.set_unusable_password()
                 user.save(update_fields=["password"])
+                audit("user_registered", request, target=f"{user.pk}:{user.email}", via="google")
 
             if not created:
                 changed = False
@@ -127,12 +131,14 @@ class GoogleAuthView(APIView):
                     user.save(update_fields=["first_name", "last_name"])
 
             if not user.is_active:
+                audit("login_failed", request, login=email, reason="account_pending", via="google")
                 return Response(
                     {"detail": ACCOUNT_PENDING_MESSAGE, "code": ACCOUNT_PENDING_CODE, "is_new": created},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
             refresh = RefreshToken.for_user(user)
+            audit("login_success", request, user=user, via="google")
             return Response({
                 "access":  str(refresh.access_token),
                 "refresh": str(refresh),
@@ -237,6 +243,7 @@ class RegisterView(generics.CreateAPIView):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
+        audit("user_registered", request, target=f"{user.pk}:{user.email}", via="form")
         return Response(
             {"detail": "Ro'yxatdan o'tish muvaffaqiyatli. Administrator hisobingizni faollashtirgach, tizimga kira olasiz."},
             status=status.HTTP_201_CREATED,
@@ -295,6 +302,16 @@ class UserViewSet(viewsets.ModelViewSet):
     filterset_fields = ["is_active"]
     search_fields = ["email", "first_name", "last_name"]
 
+    def perform_update(self, serializer):
+        user = serializer.save()
+        audit("user_updated", self.request, target=f"{user.pk}:{user.email}",
+              fields=",".join(sorted(serializer.validated_data)))
+
+    def perform_destroy(self, instance):
+        target = f"{instance.pk}:{instance.email}"
+        instance.delete()
+        audit("user_deleted", self.request, target=target)
+
     @action(detail=True, methods=["post"], url_path="assign-role")
     def assign_role(self, request, pk=None):
         user = self.get_object()
@@ -306,13 +323,17 @@ class UserViewSet(viewsets.ModelViewSet):
             **serializer.validated_data,
         )
         ensure_position_department(assignment)
+        audit("role_assigned", request, target=f"{user.pk}:{user.email}",
+              role=assignment.role, assignment_id=assignment.pk)
         return Response(RoleAssignmentSerializer(assignment).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["delete"], url_path=r"roles/(?P<role_id>\d+)")
     def remove_role(self, request, pk=None, role_id=None):
         user = self.get_object()
         assignment = get_object_or_404(UserRoleAssignment, id=role_id, user=user)
+        role = assignment.role
         assignment.delete()
+        audit("role_removed", request, target=f"{user.pk}:{user.email}", role=role, assignment_id=role_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="toggle-active")
@@ -320,4 +341,6 @@ class UserViewSet(viewsets.ModelViewSet):
         user = self.get_object()
         user.is_active = not user.is_active
         user.save(update_fields=["is_active"])
+        audit("user_activated" if user.is_active else "user_deactivated", request,
+              target=f"{user.pk}:{user.email}")
         return Response({"is_active": user.is_active})

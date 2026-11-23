@@ -23,8 +23,9 @@ class LoginSerializer(TokenObtainPairSerializer):
 
     def validate(self, attrs):
         try:
-            return super().validate(attrs)
+            data = super().validate(attrs)
         except AuthenticationFailed:
+            # Muvaffaqiyatsiz urinish audit'ga authenticate() → user_login_failed signali orqali yoziladi
             # django-axes: email bloklangan (5 noto'g'ri urinish) — avval shuni tekshir,
             # aks holda quyidagi parol tekshiruvi blokni chetlab o'tishga imkon beradi
             request = self.context.get("request")
@@ -41,6 +42,9 @@ class LoginSerializer(TokenObtainPairSerializer):
                     {"detail": ACCOUNT_PENDING_MESSAGE, "code": ACCOUNT_PENDING_CODE}
                 )
             raise
+        from apps.core.audit import audit
+        audit("login_success", self.context.get("request"), user=self.user, via="api")
+        return data
 
 
 class RegisterSerializer(serializers.ModelSerializer):

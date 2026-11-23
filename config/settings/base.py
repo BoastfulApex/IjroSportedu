@@ -150,6 +150,34 @@ PROTECTED_MEDIA_INTERNAL_PREFIX = "/protected-media/"  # nginx: location /protec
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+# Audit log (apps/core/audit.py): kirishlar, faollashtirish/rol, admin paneldagi o'zgarishlar.
+# Standart: stderr → gunicorn → journald (`journalctl -u ijrosportedu.service | grep AUDIT`).
+# AUDIT_LOG_FILE berilsa — qo'shimcha aylanuvchi fayl (10 MB × 10). Papka mavjud va yozish huquqi bo'lishi kerak.
+AUDIT_LOG_FILE = env("AUDIT_LOG_FILE", default="")
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"audit": {"format": "%(asctime)s %(message)s"}},
+    "handlers": {
+        "audit_console": {"class": "logging.StreamHandler", "formatter": "audit"},
+        **({"audit_file": {
+            "class": "logging.handlers.RotatingFileHandler",
+            "filename": AUDIT_LOG_FILE,
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 10,
+            "encoding": "utf-8",
+            "formatter": "audit",
+        }} if AUDIT_LOG_FILE else {}),
+    },
+    "loggers": {
+        "audit": {
+            "handlers": ["audit_console"] + (["audit_file"] if AUDIT_LOG_FILE else []),
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}
+
 # DRF
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
