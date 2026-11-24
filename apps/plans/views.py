@@ -2,7 +2,7 @@ import datetime
 from rest_framework import viewsets, status, serializers
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q
 from django.utils import timezone
@@ -31,6 +31,30 @@ def get_user_dept_ids(user):
 
 def can_view_all(user):
     return user.is_super_admin() or user.is_task_controller() or user.is_institute_leader()
+
+
+def can_view_all_reports(user):
+    """Barcha bo'limlarning kunlik/haftalik hisobotlarini KO'RISH (faqat o'qish).
+    can_view_all + Buyruqlar bo'limi (ORDER_CONTROL) xodimlari — rektorat buyruqlarini kirituvchilar.
+    Ish rejasini tasdiqlash huquqi bunga kirmaydi (u can_view_all da)."""
+    return can_view_all(user) or user.role_assignments.filter(
+        is_active=True, department__dept_type="ORDER_CONTROL"
+    ).exists()
+
+
+def scope_reports(request, qs):
+    """Hisobotlar ko'rinish doirasi.
+    O'qish (GET): can_view_all_reports — hamma bo'lim, qolganlar — o'z bo'limi.
+    O'zgartirish (tahrir, o'chirish, rasm/band qo'shish): o'z bo'limi; hamma bo'lim — faqat super admin.
+    Shunday qilib hisobotlarni kuzatuvchilar boshqa bo'limlar hisobotini o'zgartira olmaydi."""
+    user = request.user
+    if request.method in SAFE_METHODS:
+        see_all = can_view_all_reports(user)
+    else:
+        see_all = user.is_super_admin()
+    if see_all:
+        return qs
+    return qs.filter(department_id__in=get_user_dept_ids(user))
 
 
 # ── WorkPlan ─────────────────────────────────────────────────────────────────
@@ -215,16 +239,10 @@ class DailyReportViewSet(viewsets.ModelViewSet):
         return DailyReportSerializer
 
     def get_queryset(self):
-        user = self.request.user
         qs = DailyReport.objects.select_related(
             "author", "department", "work_plan_item"
         ).prefetch_related("images", "author__role_assignments")
-
-        if can_view_all(user):
-            pass
-        else:
-            dept_ids = get_user_dept_ids(user)
-            qs = qs.filter(department_id__in=dept_ids)
+        qs = scope_reports(self.request, qs)
 
         # Filterlar
         dept = self.request.query_params.get("department")
@@ -310,14 +328,8 @@ class WeeklyReportViewSet(viewsets.ReadOnlyModelViewSet):
         return WeeklyReportSerializer
 
     def get_queryset(self):
-        user = self.request.user
         qs = WeeklyReport.objects.select_related("department").prefetch_related("extras__images")
-
-        if can_view_all(user):
-            pass
-        else:
-            dept_ids = get_user_dept_ids(user)
-            qs = qs.filter(department_id__in=dept_ids)
+        qs = scope_reports(self.request, qs)
 
         dept = self.request.query_params.get("department")
         if dept:
