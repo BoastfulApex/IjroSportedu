@@ -1,5 +1,6 @@
 from rest_framework import generics, status, viewsets, filters
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
@@ -14,6 +15,7 @@ from .serializers import (
     RegisterSerializer, UserProfileSerializer, LoginSerializer,
     UserListSerializer, UserBasicSerializer, RoleAssignmentSerializer, AssignRoleSerializer,
     ACCOUNT_PENDING_CODE, ACCOUNT_PENDING_MESSAGE,
+    ACCOUNT_ARCHIVED_CODE, ACCOUNT_ARCHIVED_MESSAGE,
 )
 from .permissions import IsSuperAdmin, HasActiveRole
 from apps.core.audit import audit
@@ -103,8 +105,18 @@ class GoogleAuthView(APIView):
             if not first_name and not last_name:
                 first_name = email.split("@")[0]
 
+            # Arxivlangan hisob Google orqali ham kira olmaydi va qayta yaratilmaydi
+            # (email katta-kichik harf farqi bilan ham)
+            existing = User.objects.filter(email__iexact=email).first()
+            if existing and existing.is_archived:
+                audit("login_failed", request, login=email, reason="account_archived", via="google")
+                return Response(
+                    {"detail": ACCOUNT_ARCHIVED_MESSAGE, "code": ACCOUNT_ARCHIVED_CODE},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
             user, created = User.objects.get_or_create(
-                email=email,
+                email=existing.email if existing else email,
                 defaults={
                     "first_name": first_name,
                     "last_name":  last_name,
@@ -302,15 +314,59 @@ class UserViewSet(viewsets.ModelViewSet):
     filterset_fields = ["is_active"]
     search_fields = ["email", "first_name", "last_name"]
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Ro'yxat: standart — arxivsiz; ?archived=1 — faqat arxivlanganlar.
+        # Detail amallar (arxivdan chiqarish, o'chirish) arxivlanganlarni ham topadi.
+        if self.action == "list":
+            archived = self.request.query_params.get("archived") in ("1", "true")
+            qs = qs.filter(is_archived=archived)
+        return qs
+
     def perform_update(self, serializer):
+        if serializer.instance.is_archived:
+            raise ValidationError({"detail": "Arxivlangan foydalanuvchini o'zgartirib bo'lmaydi. Avval arxivdan chiqaring."})
         user = serializer.save()
         audit("user_updated", self.request, target=f"{user.pk}:{user.email}",
               fields=",".join(sorted(serializer.validated_data)))
 
+    def destroy(self, request, *args, **kwargs):
+        if self.get_object().pk == request.user.pk:
+            return Response({"detail": "O'zingizni o'chira olmaysiz."}, status=status.HTTP_400_BAD_REQUEST)
+        return super().destroy(request, *args, **kwargs)
+
     def perform_destroy(self, instance):
         target = f"{instance.pk}:{instance.email}"
+        impact = instance.deletion_impact()
         instance.delete()
-        audit("user_deleted", self.request, target=target)
+        audit("user_deleted", self.request, target=target,
+              removed=", ".join(f"{r['name']}={r['count']}" for r in impact) or "-")
+
+    @action(detail=True, methods=["get"], url_path="delete-preview")
+    def delete_preview(self, request, pk=None):
+        """O'chirishdan oldin: u bilan birga butunlay o'chadigan yozuvlar soni."""
+        user = self.get_object()
+        return Response({"user": user.full_name, "email": user.email, "items": user.deletion_impact()})
+
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request, pk=None):
+        user = self.get_object()
+        if user.pk == request.user.pk:
+            return Response({"detail": "O'zingizni arxivlay olmaysiz."}, status=status.HTTP_400_BAD_REQUEST)
+        if user.is_archived:
+            return Response({"detail": "Foydalanuvchi allaqachon arxivlangan."}, status=status.HTTP_400_BAD_REQUEST)
+        user.archive()
+        audit("user_archived", request, target=f"{user.pk}:{user.email}")
+        return Response(UserListSerializer(user).data)
+
+    @action(detail=True, methods=["post"], url_path="unarchive")
+    def unarchive(self, request, pk=None):
+        user = self.get_object()
+        if not user.is_archived:
+            return Response({"detail": "Foydalanuvchi arxivda emas."}, status=status.HTTP_400_BAD_REQUEST)
+        user.unarchive()
+        audit("user_unarchived", request, target=f"{user.pk}:{user.email}")
+        return Response(UserListSerializer(user).data)
 
     @action(detail=True, methods=["post"], url_path="assign-role")
     def assign_role(self, request, pk=None):
@@ -339,6 +395,9 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="toggle-active")
     def toggle_active(self, request, pk=None):
         user = self.get_object()
+        if user.is_archived:
+            return Response({"detail": "Arxivlangan foydalanuvchi. Avval arxivdan chiqaring."},
+                            status=status.HTTP_400_BAD_REQUEST)
         user.is_active = not user.is_active
         user.save(update_fields=["is_active"])
         audit("user_activated" if user.is_active else "user_deactivated", request,

@@ -11,6 +11,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     date_joined = models.DateTimeField(auto_now_add=True)
+    # Arxiv: hisob saqlanadi (tarix, hisobotlar), lekin tizimga kira olmaydi va
+    # shu email bilan qayta ro'yxatdan o'ta olmaydi. Faqat super admin arxivlaydi/chiqaradi.
+    is_archived = models.BooleanField("Arxivlangan", default=False, db_index=True)
+    archived_at = models.DateTimeField("Arxivlangan vaqt", null=True, blank=True)
 
     objects = UserManager()
 
@@ -32,6 +36,46 @@ class User(AbstractBaseUser, PermissionsMixin):
     def get_roles(self):
         return self.role_assignments.filter(is_active=True).select_related(
             "organization", "department", "chair"
+        )
+
+    def archive(self):
+        """Arxivlash: kirishni yopadi va barcha ochiq sessiyalarni (refresh token) bekor qiladi.
+        Access token ham darhol ishlamay qoladi — SimpleJWT har so'rovda is_active ni tekshiradi."""
+        from django.utils import timezone
+        from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+
+        self.is_archived = True
+        self.is_active = False
+        self.archived_at = timezone.now()
+        self.save(update_fields=["is_archived", "is_active", "archived_at"])
+        for token in OutstandingToken.objects.filter(user=self):
+            BlacklistedToken.objects.get_or_create(token=token)
+
+    def unarchive(self):
+        self.is_archived = False
+        self.is_active = True
+        self.archived_at = None
+        self.save(update_fields=["is_archived", "is_active", "archived_at"])
+
+    def deletion_impact(self):
+        """O'chirilganda u bilan birga butunlay o'chadigan yozuvlar: [{"name", "count"}].
+        Django Collector — haqiqiy CASCADE zanjiri (masalan hisobot rasmlari ham) hisoblanadi."""
+        from django.db.models.deletion import Collector
+
+        collector = Collector(using=self._state.db or "default")
+        collector.collect([self])
+        counts = {}
+        for model, instances in collector.data.items():
+            if model is type(self):
+                continue
+            counts[model] = counts.get(model, 0) + len(instances)
+        for qs in collector.fast_deletes:
+            n = qs.count()
+            if n:
+                counts[qs.model] = counts.get(qs.model, 0) + n
+        return sorted(
+            ({"name": str(m._meta.verbose_name_plural), "count": c} for m, c in counts.items() if c),
+            key=lambda row: -row["count"],
         )
 
     def has_role(self, role, organization=None, department=None):

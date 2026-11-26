@@ -9,6 +9,9 @@ ACCOUNT_PENDING_MESSAGE = (
     "Hisobingiz faol emas. Yangi ro'yxatdan o'tgan bo'lsangiz, "
     "administrator hisobingizni faollashtirishini kuting."
 )
+ACCOUNT_ARCHIVED_CODE = "account_archived"
+ACCOUNT_ARCHIVED_MESSAGE = "Hisobingiz arxivlangan. Tizimdan foydalanish uchun administratorga murojaat qiling."
+REGISTER_BLOCKED_MESSAGE = "Bu email bilan ro'yxatdan o'tib bo'lmaydi. Administratorga murojaat qiling."
 
 
 class LoginLocked(APIException):
@@ -38,6 +41,10 @@ class LoginSerializer(TokenObtainPairSerializer):
                 )
             user = User.objects.filter(email=attrs.get(self.username_field)).first()
             if user and not user.is_active and user.check_password(attrs.get("password", "")):
+                if user.is_archived:
+                    raise AuthenticationFailed(
+                        {"detail": ACCOUNT_ARCHIVED_MESSAGE, "code": ACCOUNT_ARCHIVED_CODE}
+                    )
                 raise AuthenticationFailed(
                     {"detail": ACCOUNT_PENDING_MESSAGE, "code": ACCOUNT_PENDING_CODE}
                 )
@@ -54,6 +61,16 @@ class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["email", "first_name", "last_name", "phone", "password", "password2"]
+
+    def validate_email(self, value):
+        # Katta-kichik harf farqi bilan ham tekshiriladi: arxivlangan hisob emailini
+        # "Ali@..." ko'rinishida qayta ro'yxatdan o'tkazib bo'lmasin
+        existing = User.objects.filter(email__iexact=value).first()
+        if existing and existing.is_archived:
+            raise serializers.ValidationError(REGISTER_BLOCKED_MESSAGE)
+        if existing:
+            raise serializers.ValidationError("Bu email bilan hisob allaqachon mavjud.")
+        return value
 
     def validate(self, attrs):
         if attrs["password"] != attrs["password2"]:
@@ -100,7 +117,9 @@ class UserListSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ["id", "email", "full_name", "first_name", "last_name", "is_active", "roles"]
+        fields = ["id", "email", "full_name", "first_name", "last_name", "is_active",
+                  "is_archived", "archived_at", "roles"]
+        read_only_fields = ["is_archived", "archived_at"]
 
     def get_roles(self, obj):
         return RoleAssignmentSerializer(
